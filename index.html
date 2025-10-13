@@ -1,710 +1,686 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard de Análise OTIF</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <style>
+        /* Estilos adicionais para uma melhor aparência */
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        .container {
+            max-width: 1280px;
+        }
+    </style>
+</head>
+<body class="bg-gray-100">
 
-// --- COMPONENTES AUXILIARES ---
-
-const LoadingOverlay = ({ message }) => (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-        <div className="bg-white p-6 rounded-lg shadow-xl flex items-center">
-            <svg className="animate-spin h-5 w-5 mr-3 text-blue-500" viewBox="0 0 24 24">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+    <div id="loading-overlay" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" style="display: none;">
+        <div class="bg-white p-6 rounded-lg shadow-xl flex items-center">
+            <svg class="animate-spin h-5 w-5 mr-3 text-blue-500" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
             </svg>
-            <span className="text-gray-700 font-semibold">{message || "A processar..."}</span>
+            <span id="loading-message" class="text-gray-700 font-semibold">A processar...</span>
         </div>
     </div>
-);
 
-const StatCard = ({ title, value, icon, color }) => (
-    <div className="bg-white p-6 rounded-lg shadow-md flex items-center">
-        <div className={`mr-4 p-3 rounded-full ${color}`}>
-            {icon}
-        </div>
-        <div>
-            <p className="text-sm text-gray-500">{title}</p>
-            <p className="text-2xl font-bold">{value}</p>
-        </div>
-    </div>
-);
-
-const BarChart = ({ data, title, barColorClass = 'bg-blue-500', onBarClick }) => {
-    if (!data || data.length === 0) {
-        return (
-            <div className="bg-white p-6 rounded-lg shadow-md">
-                <h3 className="text-lg font-semibold mb-4 text-gray-700">{title}</h3>
-                <p className="text-gray-500">Não há dados suficientes para exibir.</p>
-            </div>
-        );
-    }
-
-    const maxValue = Math.max(...data.map(item => item.value));
-
-    return (
-        <div className="bg-white p-6 rounded-lg shadow-md">
-            <h3 className="text-lg font-semibold mb-4 text-gray-700">{title}</h3>
-            <div className="space-y-4">
-                {data.map(item => (
-                    <div 
-                        key={item.label} 
-                        className={`flex items-center group ${onBarClick ? 'cursor-pointer' : ''}`}
-                        onClick={() => onBarClick && onBarClick(item.label)}
-                    >
-                        <p className="w-1/4 text-sm text-gray-600 truncate pr-2 group-hover:text-blue-600">{item.label}</p>
-                        <div className="w-3/4 bg-gray-200 rounded-full h-6">
-                            <div
-                                className={`${barColorClass} h-6 rounded-full text-white text-xs flex items-center justify-end pr-2 group-hover:opacity-80 transition-opacity`}
-                                style={{ width: `${(maxValue > 0 ? (item.value / maxValue) * 100 : 0)}%` }}
-                            >
-                                {item.value.toFixed(2)}%
-                            </div>
-                        </div>
-                    </div>
-                ))}
-            </div>
-        </div>
-    );
-};
-
-
-const ReasonTable = ({ data, title, total }) => {
-    if (!data || data.length === 0) {
-        return (
-            <div className="bg-white p-6 rounded-lg shadow-md">
-                <h3 className="text-lg font-semibold mb-4 text-gray-700">{title}</h3>
-                <p className="text-gray-500">Nenhum motivo registrado.</p>
-            </div>
-        );
-    }
-    
-    return (
-        <div className="bg-white p-6 rounded-lg shadow-md">
-            <h3 className="text-lg font-semibold mb-4 text-gray-700">{title}</h3>
-            <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-gray-200">
-                    <thead className="bg-gray-50">
-                        <tr>
-                            <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Motivo</th>
-                            <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Ocorrências</th>
-                            <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Percentual</th>
-                        </tr>
-                    </thead>
-                    <tbody className="bg-white divide-y divide-gray-200">
-                        {data.map(item => (
-                            <tr key={item.reason}>
-                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-800">{item.reason}</td>
-                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{item.count}</td>
-                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                    {total > 0 ? ((item.count / total) * 100).toFixed(2) : '0.00'}%
-                                </td>
-                            </tr>
-                        ))}
-                    </tbody>
-                </table>
-            </div>
-        </div>
-    );
-};
-
-const PercentageBar = ({ value, color = 'bg-gray-500' }) => (
-    <div className="w-full bg-gray-200 rounded-full h-5 relative">
-        <div
-            className={`${color} h-5 rounded-full`}
-            style={{ width: `${value.toFixed(2)}%` }}
-        />
-        <span className="absolute inset-0 flex items-center justify-center text-xs font-bold text-white px-2">
-            {value.toFixed(2)}%
-        </span>
-    </div>
-);
-
-const RegionDetailView = ({ region, data, onBack }) => {
-    if (!data || data.length === 0) {
-        return (
-            <div className="bg-white p-6 rounded-lg shadow-md col-span-1 lg:col-span-2">
-                <button onClick={onBack} className="mb-4 bg-blue-500 text-white font-bold py-2 px-4 rounded-md hover:bg-blue-600 transition-colors">
-                    &larr; Voltar
+    <header class="bg-white shadow-md sticky top-0 z-10">
+        <div class="container mx-auto flex items-center justify-between p-4">
+            <h1 class="text-2xl font-bold text-gray-800">Análise OTIF</h1>
+            <nav>
+                <button id="nav-dashboard" class="py-2 px-4 font-semibold rounded-md transition-colors bg-blue-500 text-white">
+                    Dashboard
                 </button>
-                <h3 className="text-lg font-semibold mb-4 text-gray-700">Performance por Transportadora na Região: <span className="text-blue-600">{region}</span></h3>
-                <p className="text-gray-500">Nenhum dado de transportadora encontrado para esta região.</p>
-            </div>
-        )
-    }
+                <button id="nav-import" class="ml-4 py-2 px-4 font-semibold rounded-md transition-colors text-gray-600 hover:bg-gray-200">
+                    Importar Arquivo
+                </button>
+            </nav>
+        </div>
+    </header>
 
-    return (
-        <div className="bg-white p-6 rounded-lg shadow-md col-span-1 lg:col-span-2">
-             <button onClick={onBack} className="mb-4 bg-blue-500 text-white font-bold py-2 px-4 rounded-md hover:bg-blue-600 transition-colors">
-                &larr; Voltar
-            </button>
-            <h3 className="text-lg font-semibold mb-4 text-gray-700">Performance por Transportadora na Região: <span className="text-blue-600">{region}</span></h3>
-            <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-gray-200">
-                    <thead className="bg-gray-50">
-                        <tr>
-                            <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Transportadora</th>
-                            <th scope="col" className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Entregas (Atraso/Total)</th>
-                            <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[120px]">OTIF %</th>
-                            <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[120px]">On-Time %</th>
-                            <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[120px]">In-Full %</th>
-                        </tr>
-                    </thead>
-                    <tbody className="bg-white divide-y divide-gray-200">
-                        {data.map(item => (
-                            <tr key={item.label}>
-                                <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-800 font-medium">{item.label}</td>
-                                <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500 text-center">{item.delayCount} de {item.totalCount}</td>
-                                <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500"><PercentageBar value={item.otifPercentage} color="bg-blue-500" /></td>
-                                <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500"><PercentageBar value={item.onTimePercentage} color="bg-green-500" /></td>
-                                <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500"><PercentageBar value={item.inFullPercentage} color="bg-indigo-500" /></td>
-                            </tr>
-                        ))}
-                    </tbody>
-                </table>
+    <main class="container mx-auto p-4 sm:p-6 lg:p-8">
+        <!-- Vista de Importação -->
+        <div id="import-view" style="display: none;">
+            <div class="flex flex-col items-center justify-center p-4 gap-8">
+                <div id="drop-zone" class="w-full max-w-2xl p-8 text-center bg-white rounded-lg shadow-lg border-2 border-dashed border-gray-300">
+                    <svg class="mx-auto h-12 w-12 text-gray-400" stroke="currentColor" fill="none" viewBox="0 0 48 48" aria-hidden="true"><path d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 01-4 4H12a4 4 0 01-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28m0 0l4 4m4-24h8m-4-4v8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+                    <h2 class="mt-4 text-2xl font-bold text-gray-800">Importar Novo Ficheiro</h2>
+                    <p class="mt-2 text-sm text-gray-500">Arraste e solte um ficheiro .csv ou .xlsx aqui.</p>
+                    <div class="mt-6">
+                        <input type="file" id="file-upload" class="hidden" accept=".csv, .xlsx">
+                        <label for="file-upload" class="cursor-pointer bg-blue-500 text-white font-bold py-2 px-4 rounded-md hover:bg-blue-600 transition-colors">
+                            Ou Selecione um Ficheiro
+                        </label>
+                    </div>
+                     <p id="import-error" class="mt-4 text-sm text-red-600"></p>
+                </div>
+                <div class="w-full max-w-2xl p-8 bg-white rounded-lg shadow-lg">
+                    <h3 class="text-xl font-bold text-gray-800 mb-4">Ficheiros Carregados</h3>
+                    <ul id="loaded-files-list" class="space-y-3">
+                       <!-- A lista de ficheiros será inserida aqui -->
+                    </ul>
+                     <div class="mt-6 border-t pt-6">
+                        <button id="clear-history-btn" class="w-full font-bold py-2 px-4 rounded-md transition-colors bg-red-500 text-white hover:bg-red-600">
+                            Limpar Todo o Histórico
+                        </button>
+                    </div>
+                </div>
             </div>
         </div>
-    )
-}
 
-// --- GESTÃO DA BASE DE DADOS INDEXEDDB ---
-const DB_NAME = 'otif-dashboard-db';
-const DB_VERSION = 1;
-const FILE_STORE = 'files';
-const DATA_STORE = 'data';
+        <!-- Vista do Dashboard -->
+        <div id="dashboard-view">
+             <!-- O conteúdo do dashboard será inserido aqui -->
+        </div>
+    </main>
 
-const dbPromise = new Promise((resolve, reject) => {
-    const request = indexedDB.open(DB_NAME, DB_VERSION);
-    request.onerror = () => reject("Erro ao abrir a base de dados.");
-    request.onsuccess = () => resolve(request.result);
-    request.onupgradeneeded = event => {
-        const db = event.target.result;
-        if (!db.objectStoreNames.contains(FILE_STORE)) {
-            db.createObjectStore(FILE_STORE, { keyPath: 'name' });
-        }
-        if (!db.objectStoreNames.contains(DATA_STORE)) {
-            const dataStore = db.createObjectStore(DATA_STORE, { autoIncrement: true });
-            dataStore.createIndex('fileName', 'fileName', { unique: false });
-        }
-    };
-});
+    <script type="module">
+        // --- CONFIGURAÇÃO ---
+        const DB_NAME = 'otif-dashboard-db';
+        const DB_VERSION = 1;
+        const FILE_STORE = 'files';
+        const DATA_STORE = 'data';
 
-// --- COMPONENTE PRINCIPAL ---
-export default function App() {
-    const [currentView, setCurrentView] = useState('dashboard');
-    const [data, setData] = useState([]);
-    const [loadedFiles, setLoadedFiles] = useState([]);
-    const [error, setError] = useState('');
-    const [isDragging, setIsDragging] = useState(false);
-    const [selectedRegion, setSelectedRegion] = useState(null);
-    const [selectedDateRange, setSelectedDateRange] = useState({ start: '', end: '' });
-    const [appliedDateRange, setAppliedDateRange] = useState({ start: '', end: '' });
-    const [confirmClear, setConfirmClear] = useState(false);
-    const [loadingMessage, setLoadingMessage] = useState('A carregar interface...');
-    const [stylesLoaded, setStylesLoaded] = useState(false);
+        // --- ESTADO DA APLICAÇÃO ---
+        let allData = [];
+        let loadedFiles = [];
+        let currentView = 'dashboard';
+        let appliedDateRange = { start: '', end: '' };
+        let selectedRegion = null;
 
-    useEffect(() => {
-        // Adiciona o script do Tailwind CSS e aguarda o seu carregamento
-        const tailwindScriptId = 'tailwind-cdn-script';
-        if (!document.getElementById(tailwindScriptId)) {
-            const tailwindScript = document.createElement('script');
-            tailwindScript.id = tailwindScriptId;
-            tailwindScript.src = 'https://cdn.tailwindcss.com';
-            document.head.appendChild(tailwindScript);
-        }
+        // --- ELEMENTOS DO DOM ---
+        const loadingOverlay = document.getElementById('loading-overlay');
+        const loadingMessage = document.getElementById('loading-message');
+        const navDashboard = document.getElementById('nav-dashboard');
+        const navImport = document.getElementById('nav-import');
+        const importView = document.getElementById('import-view');
+        const dashboardView = document.getElementById('dashboard-view');
+        const dropZone = document.getElementById('drop-zone');
+        const fileUpload = document.getElementById('file-upload');
+        const importError = document.getElementById('import-error');
+        const loadedFilesList = document.getElementById('loaded-files-list');
+        const clearHistoryBtn = document.getElementById('clear-history-btn');
 
-        // Sondagem para verificar quando os estilos do Tailwind são realmente aplicados
-        const pollForStyles = setInterval(() => {
-            // O script do Tailwind injeta uma tag <style> com este atributo de dados
-            if (document.querySelector('style[data-tailwind]')) {
-                clearInterval(pollForStyles);
-                setStylesLoaded(true);
+        // --- BASE DE DADOS INDEXEDDB ---
+        const dbPromise = new Promise((resolve, reject) => {
+            const request = indexedDB.open(DB_NAME, DB_VERSION);
+            request.onerror = () => reject("Erro ao abrir a base de dados.");
+            request.onsuccess = () => resolve(request.result);
+            request.onupgradeneeded = event => {
+                const db = event.target.result;
+                if (!db.objectStoreNames.contains(FILE_STORE)) {
+                    db.createObjectStore(FILE_STORE, { keyPath: 'name' });
+                }
+                if (!db.objectStoreNames.contains(DATA_STORE)) {
+                    const dataStore = db.createObjectStore(DATA_STORE, { autoIncrement: true });
+                    dataStore.createIndex('fileName', 'fileName', { unique: false });
+                }
+            };
+        });
+        
+        // --- FUNÇÕES DE CONTROLO ---
+        const showLoading = (message = 'A processar...') => {
+            loadingMessage.textContent = message;
+            loadingOverlay.style.display = 'flex';
+        };
+
+        const hideLoading = () => {
+            loadingOverlay.style.display = 'none';
+        };
+        
+        const switchView = (view) => {
+            currentView = view;
+            if (view === 'dashboard') {
+                dashboardView.style.display = 'block';
+                importView.style.display = 'none';
+                navDashboard.classList.add('bg-blue-500', 'text-white');
+                navDashboard.classList.remove('text-gray-600', 'hover:bg-gray-200');
+                navImport.classList.remove('bg-blue-500', 'text-white');
+                navImport.classList.add('text-gray-600', 'hover:bg-gray-200');
+            } else {
+                dashboardView.style.display = 'none';
+                importView.style.display = 'block';
+                navImport.classList.add('bg-blue-500', 'text-white');
+                navImport.classList.remove('text-gray-600', 'hover:bg-gray-200');
+                navDashboard.classList.remove('bg-blue-500', 'text-white');
+                navDashboard.classList.add('text-gray-600', 'hover:bg-gray-200');
             }
-        }, 100);
+        };
 
-        // Timeout de segurança para evitar um loop infinito
-        const timeout = setTimeout(() => {
-            clearInterval(pollForStyles);
-            if (!document.querySelector('style[data-tailwind]')) {
-                 setError("Não foi possível carregar os estilos. O layout pode estar quebrado.");
+        // --- FUNÇÕES DE RENDERIZAÇÃO ---
+        const renderLoadedFiles = () => {
+            if (loadedFiles.length === 0) {
+                loadedFilesList.innerHTML = `<p class="text-gray-500">Nenhum ficheiro foi carregado ainda.</p>`;
+                return;
             }
-            setStylesLoaded(true); // Continua mesmo que os estilos falhem
-        }, 10000); // 10 segundos
+            loadedFilesList.innerHTML = loadedFiles.map(file => `
+                <li class="flex justify-between items-center bg-gray-50 p-3 rounded-md">
+                    <span class="text-gray-700 truncate pr-4">${file.name}</span>
+                    <button data-filename="${file.name}" class="remove-file-btn text-red-500 hover:text-red-700 font-semibold flex-shrink-0">Remover</button>
+                </li>
+            `).join('');
+        };
+        
+        const renderDashboard = () => {
+             if (allData.length === 0) {
+                dashboardView.innerHTML = `
+                    <div class="text-center bg-white p-8 rounded-lg shadow-md">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="mx-auto h-16 w-16 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V7a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                        <h2 class="mt-4 text-2xl font-bold text-gray-800 mb-4">Bem-vindo ao Dashboard OTIF</h2>
+                        <p class="text-gray-600 mb-6">Nenhum dado foi carregado. Por favor, vá à aba "Importar Arquivo" para começar.</p>
+                        <button id="go-to-import-btn" class="bg-blue-500 text-white font-bold py-2 px-6 rounded-md hover:bg-blue-600 transition-colors">
+                            Importar Arquivo
+                        </button>
+                    </div>
+                `;
+                return;
+            }
+            
+            const metrics = calculateMetrics();
 
-        // Carrega o script do leitor de XLSX
-        const xlsxScript = document.createElement('script');
-        const xlsxSrc = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
-        xlsxScript.src = xlsxSrc;
-        xlsxScript.async = true;
-        document.body.appendChild(xlsxScript);
+            if(selectedRegion && metrics.carrierPerformanceByRegion[selectedRegion]) {
+                dashboardView.innerHTML = renderRegionDetailView(selectedRegion, metrics.carrierPerformanceByRegion[selectedRegion]);
+                return;
+            }
 
-        // Carrega os dados do IndexedDB ao iniciar
-        const loadInitialData = async () => {
-            setLoadingMessage('A carregar dados locais...');
-            try {
-                const db = await dbPromise;
-                const fileTx = db.transaction(FILE_STORE, 'readonly');
-                const fileStore = fileTx.objectStore(FILE_STORE);
-                const filesReq = fileStore.getAll();
+            if (!metrics || metrics.totalDeliveries === 0) {
+                 dashboardView.innerHTML = `
+                     <header class="mb-8">
+                        ${renderDashboardHeader(metrics)}
+                        ${renderDateFilter()}
+                    </header>
+                    <div class="bg-white p-6 rounded-lg shadow-md text-center">
+                         <h3 class="text-lg font-semibold mb-4 text-gray-700">Nenhum dado encontrado</h3>
+                         <p class="text-gray-500">Não há registos que correspondam ao período selecionado.</p>
+                    </div>`;
+                return;
+            }
+            
+            dashboardView.innerHTML = `
+                <header class="mb-8">
+                    ${renderDashboardHeader(metrics)}
+                    ${renderDateFilter()}
+                </header>
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+                    ${renderStatCard('OTIF Geral', `${metrics.otifRate.toFixed(2)}%`, 'bg-blue-100 text-blue-600', '<svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>')}
+                    ${renderStatCard('On-Time (No Prazo)', `${metrics.onTimeRate.toFixed(2)}%`, 'bg-green-100 text-green-600', '<svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>')}
+                    ${renderStatCard('In-Full (Sem Divergência)', `${metrics.inFullRate.toFixed(2)}%`, 'bg-indigo-100 text-indigo-600', '<svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" /></svg>')}
+                    ${renderStatCard('Total de Linhas', metrics.totalDeliveries.toLocaleString('pt-BR'), 'bg-gray-200 text-gray-700', '<svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2H5a2 2 0 00-2 2v2m14 0h-2" /></svg>')}
+                </div>
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+                    ${renderBarChart('carrier-performance', metrics.carrierPerformance, 'Performance OTIF por Transportadora', 'bg-blue-500')}
+                    ${renderBarChart('region-performance', metrics.regionPerformance, 'Performance OTIF por Região (Clique para detalhar)', 'bg-teal-500', true)}
+                </div>
+                 <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    ${renderReasonTable(metrics.topDelayReasons, 'Principais Motivos de Atraso', metrics.totalDeliveries - metrics.totalCategorizedDelays)}
+                    ${renderReasonTable(metrics.topDiscrepancyReasons, 'Principais Motivos de Divergência', metrics.totalDeliveries - metrics.totalCategorizedDiscrepancies)}
+                </div>
+            `;
+        };
 
-                filesReq.onsuccess = () => {
-                    setLoadedFiles(filesReq.result);
-                };
+        const renderDashboardHeader = (metrics) => `
+            <div class="flex flex-wrap justify-between items-start gap-4 mb-6">
+                <div>
+                    <h2 class="text-2xl font-bold text-gray-800">Resumo da Performance</h2>
+                    <p class="text-gray-600">Analisando ${loadedFiles.length} ficheiro(s) com ${allData.length.toLocaleString('pt-BR')} linhas.</p>
+                </div>
+            </div>`;
+            
+        const renderDateFilter = () => `
+             <div class="bg-white p-4 rounded-lg shadow-md flex flex-wrap items-center gap-4">
+                <span class="font-semibold text-gray-700">Filtrar por Período:</span>
+                <div>
+                    <label for="start-date" class="text-sm text-gray-600 mr-2">De:</label>
+                    <input type="date" name="start" id="start-date" value="${appliedDateRange.start}" class="border-gray-300 rounded-md shadow-sm p-2">
+                </div>
+                <div>
+                   <label for="end-date" class="text-sm text-gray-600 mr-2">Até:</label>
+                   <input type="date" name="end" id="end-date" value="${appliedDateRange.end}" class="border-gray-300 rounded-md shadow-sm p-2">
+                </div>
+                <button id="apply-filter-btn" class="bg-blue-500 text-white font-bold py-2 px-4 rounded-md hover:bg-blue-600 transition-colors">Aplicar</button>
+                <button id="clear-filter-btn" class="bg-gray-300 text-gray-800 font-bold py-2 px-4 rounded-md hover:bg-gray-400 transition-colors">Limpar Filtro</button>
+            </div>`;
 
-                const dataTx = db.transaction(DATA_STORE, 'readonly');
-                const dataStore = dataTx.objectStore(DATA_STORE);
-                const dataReq = dataStore.getAll();
+        const renderStatCard = (title, value, color, icon) => `
+            <div class="bg-white p-6 rounded-lg shadow-md flex items-center">
+                <div class="mr-4 p-3 rounded-full ${color}">${icon}</div>
+                <div>
+                    <p class="text-sm text-gray-500">${title}</p>
+                    <p class="text-2xl font-bold">${value}</p>
+                </div>
+            </div>`;
+
+        const renderBarChart = (id, chartData, title, barColorClass, isClickable = false) => {
+             if (!chartData || chartData.length === 0) {
+                return `<div id="${id}" class="bg-white p-6 rounded-lg shadow-md"><h3 class="text-lg font-semibold mb-4 text-gray-700">${title}</h3><p class="text-gray-500">Não há dados suficientes para exibir.</p></div>`;
+            }
+            const maxValue = Math.max(...chartData.map(item => item.value));
+            return `
+                <div id="${id}" class="bg-white p-6 rounded-lg shadow-md">
+                    <h3 class="text-lg font-semibold mb-4 text-gray-700">${title}</h3>
+                    <div class="space-y-4">
+                        ${chartData.map(item => `
+                            <div data-label="${item.label}" class="flex items-center group ${isClickable ? 'cursor-pointer region-bar' : ''}">
+                                <p class="w-1/4 text-sm text-gray-600 truncate pr-2 group-hover:text-blue-600">${item.label}</p>
+                                <div class="w-3/4 bg-gray-200 rounded-full h-6">
+                                    <div class="${barColorClass} h-6 rounded-full text-white text-xs flex items-center justify-end pr-2 group-hover:opacity-80 transition-opacity" style="width: ${(maxValue > 0 ? (item.value / maxValue) * 100 : 0)}%;">
+                                        ${item.value.toFixed(2)}%
+                                    </div>
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>`;
+        };
+
+        const renderReasonTable = (tableData, title, total) => {
+            if (!tableData || tableData.length === 0) {
+                 return `<div class="bg-white p-6 rounded-lg shadow-md"><h3 class="text-lg font-semibold mb-4 text-gray-700">${title}</h3><p class="text-gray-500">Nenhum motivo registrado.</p></div>`;
+            }
+            return `
+                <div class="bg-white p-6 rounded-lg shadow-md">
+                    <h3 class="text-lg font-semibold mb-4 text-gray-700">${title}</h3>
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full divide-y divide-gray-200">
+                            <thead class="bg-gray-50">
+                                <tr>
+                                    <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Motivo</th>
+                                    <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Ocorrências</th>
+                                    <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Percentual</th>
+                                </tr>
+                            </thead>
+                            <tbody class="bg-white divide-y divide-gray-200">
+                                ${tableData.map(item => `
+                                    <tr>
+                                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-800">${item.reason}</td>
+                                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${item.count}</td>
+                                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${total > 0 ? ((item.count / total) * 100).toFixed(2) : '0.00'}%</td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>`;
+        };
+        
+        const renderRegionDetailView = (region, regionData) => {
+             if (!regionData || regionData.length === 0) {
+                return `
+                <div class="bg-white p-6 rounded-lg shadow-md col-span-1 lg:col-span-2">
+                    <button id="back-to-dashboard" class="mb-4 bg-blue-500 text-white font-bold py-2 px-4 rounded-md hover:bg-blue-600 transition-colors">&larr; Voltar</button>
+                    <h3 class="text-lg font-semibold mb-4 text-gray-700">Performance por Transportadora na Região: <span class="text-blue-600">${region}</span></h3>
+                    <p class="text-gray-500">Nenhum dado de transportadora encontrado para esta região.</p>
+                </div>`;
+            }
+
+            return `
+                <div class="bg-white p-6 rounded-lg shadow-md col-span-1 lg:col-span-2">
+                     <button id="back-to-dashboard" class="mb-4 bg-blue-500 text-white font-bold py-2 px-4 rounded-md hover:bg-blue-600 transition-colors">&larr; Voltar</button>
+                    <h3 class="text-lg font-semibold mb-4 text-gray-700">Performance por Transportadora na Região: <span class="text-blue-600">${region}</span></h3>
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full divide-y divide-gray-200">
+                            <thead class="bg-gray-50">
+                                <tr>
+                                    <th scope="col" class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Transportadora</th>
+                                    <th scope="col" class="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Entregas (Atraso/Total)</th>
+                                    <th scope="col" class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[120px]">OTIF %</th>
+                                    <th scope="col" class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[120px]">On-Time %</th>
+                                    <th scope="col" class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[120px]">In-Full %</th>
+                                </tr>
+                            </thead>
+                            <tbody class="bg-white divide-y divide-gray-200">
+                                ${regionData.map(item => `
+                                     <tr>
+                                        <td class="px-4 py-4 whitespace-nowrap text-sm text-gray-800 font-medium">${item.label}</td>
+                                        <td class="px-4 py-4 whitespace-nowrap text-sm text-gray-500 text-center">${item.delayCount} de ${item.totalCount}</td>
+                                        <td class="px-4 py-4 whitespace-nowrap text-sm text-gray-500"><div class="w-full bg-gray-200 rounded-full h-5 relative"><div class="bg-blue-500 h-5 rounded-full" style="width: ${item.otifPercentage.toFixed(2)}%;"></div><span class="absolute inset-0 flex items-center justify-center text-xs font-bold text-white px-2">${item.otifPercentage.toFixed(2)}%</span></div></td>
+                                        <td class="px-4 py-4 whitespace-nowrap text-sm text-gray-500"><div class="w-full bg-gray-200 rounded-full h-5 relative"><div class="bg-green-500 h-5 rounded-full" style="width: ${item.onTimePercentage.toFixed(2)}%;"></div><span class="absolute inset-0 flex items-center justify-center text-xs font-bold text-white px-2">${item.onTimePercentage.toFixed(2)}%</span></div></td>
+                                        <td class="px-4 py-4 whitespace-nowrap text-sm text-gray-500"><div class="w-full bg-gray-200 rounded-full h-5 relative"><div class="bg-indigo-500 h-5 rounded-full" style="width: ${item.inFullPercentage.toFixed(2)}%;"></div><span class="absolute inset-0 flex items-center justify-center text-xs font-bold text-white px-2">${item.inFullPercentage.toFixed(2)}%</span></div></td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>`;
+        };
+
+        // --- LÓGICA DE DADOS ---
+        const calculateMetrics = () => {
+             const filteredData = allData.filter(row => {
+                const rowDateStr = row['Data Pedido'];
+                if (!rowDateStr) return false; 
                 
-                dataReq.onsuccess = () => {
-                    setData(dataReq.result);
-                    setLoadingMessage('');
-                };
+                let rowDate;
+                if (typeof rowDateStr === 'number') {
+                    const excelEpoch = new Date(1899, 11, 30);
+                    rowDate = new Date(excelEpoch.getTime() + rowDateStr * 86400000);
+                } else if (String(rowDateStr).includes('/')) {
+                    const parts = rowDateStr.split('/');
+                    rowDate = new Date(`${parts[2]}-${parts[1]}-${parts[0]}T00:00:00`);
+                } else { 
+                    rowDate = new Date(rowDateStr + 'T00:00:00');
+                }
 
-            } catch (err) {
-                setError("Não foi possível carregar os dados guardados.");
-                console.error(err);
-                setLoadingMessage('');
-            }
+                if(isNaN(rowDate.getTime())) return false; 
+
+                const startDate = appliedDateRange.start ? new Date(appliedDateRange.start + 'T00:00:00') : null;
+                const endDate = appliedDateRange.end ? new Date(appliedDateRange.end + 'T23:59:59') : null;
+
+                if (startDate && rowDate < startDate) return false;
+                if (endDate && rowDate > endDate) return false;
+                
+                return true;
+            });
+
+            const processedData = filteredData.map(row => {
+                const isOnTime = row['Status Entrega'] !== 'Fora do Prazo';
+                const isInFull = !row['Entrega divergente?'] || String(row['Entrega divergente?']).toLowerCase() !== 'sim';
+                return { ...row, isOnTime, isInFull };
+            });
+
+            const totalDeliveries = filteredData.length;
+            const otifCount = processedData.filter(d => d.isOnTime && d.isInFull).length;
+            const onTimeCount = processedData.filter(d => d.isOnTime).length;
+            const inFullCount = processedData.filter(d => d.isInFull).length;
+            
+            const otifRate = totalDeliveries > 0 ? (otifCount / totalDeliveries) * 100 : 0;
+            const onTimeRate = totalDeliveries > 0 ? (onTimeCount / totalDeliveries) * 100 : 0;
+            const inFullRate = totalDeliveries > 0 ? (inFullCount / totalDeliveries) * 100 : 0;
+
+            const byCarrier = processedData.reduce((acc, curr) => {
+                const carrier = curr['TRANSPORTADORA'];
+                if (!carrier) return acc;
+                if (!acc[carrier]) acc[carrier] = { total: 0, otif: 0 };
+                acc[carrier].total++;
+                if (curr.isOnTime && curr.isInFull) acc[carrier].otif++;
+                return acc;
+            }, {});
+            const carrierPerformance = Object.entries(byCarrier).map(([label, values]) => ({
+                label, value: (values.otif / values.total) * 100
+            })).sort((a, b) => b.value - a.value);
+
+            const byRegion = processedData.reduce((acc, curr) => {
+                const region = curr['Região'];
+                if (!region) return acc;
+                if (!acc[region]) acc[region] = { total: 0, otif: 0 };
+                acc[region].total++;
+                if (curr.isOnTime && curr.isInFull) acc[region].otif++;
+                return acc;
+            }, {});
+            const regionPerformance = Object.entries(byRegion).map(([label, values]) => ({
+                label, value: (values.otif / values.total) * 100
+            })).sort((a, b) => b.value - a.value);
+
+            const delayReasons = processedData.filter(row => !row.isOnTime && row['Motivos']).reduce((acc, curr) => {
+                const reason = curr['Motivos'];
+                acc[reason] = (acc[reason] || 0) + 1;
+                return acc;
+            }, {});
+            const topDelayReasons = Object.entries(delayReasons).map(([reason, count]) => ({ reason, count })).sort((a, b) => b.count - a.count);
+            
+            const discrepancyReasons = processedData.filter(row => !row.isInFull && row['Divergência']).reduce((acc, curr) => {
+                const reason = curr['Divergência'];
+                acc[reason] = (acc[reason] || 0) + 1;
+                return acc;
+            }, {});
+            const topDiscrepancyReasons = Object.entries(discrepancyReasons).map(([reason, count]) => ({ reason, count })).sort((a, b) => b.count - a.count);
+            
+            const carrierPerformanceByRegion = processedData.reduce((acc, curr) => {
+                const region = curr['Região'];
+                const carrier = curr['TRANSPORTADORA'];
+                if (!region || !carrier) return acc;
+                if (!acc[region]) acc[region] = {};
+                if (!acc[region][carrier]) acc[region][carrier] = { totalCount: 0, onTimeCount: 0, inFullCount: 0, otifCount: 0 };
+                acc[region][carrier].totalCount++;
+                if (curr.isOnTime) acc[region][carrier].onTimeCount++;
+                if (curr.isInFull) acc[region][carrier].inFullCount++;
+                if (curr.isOnTime && curr.isInFull) acc[region][carrier].otifCount++;
+                return acc;
+            }, {});
+
+            Object.keys(carrierPerformanceByRegion).forEach(region => {
+                carrierPerformanceByRegion[region] = Object.entries(carrierPerformanceByRegion[region])
+                    .map(([carrierLabel, counts]) => ({
+                        label: carrierLabel,
+                        totalCount: counts.totalCount,
+                        delayCount: counts.totalCount - counts.onTimeCount,
+                        otifPercentage: counts.totalCount > 0 ? (counts.otifCount / counts.totalCount) * 100 : 0,
+                        onTimePercentage: counts.totalCount > 0 ? (counts.onTimeCount / counts.totalCount) * 100 : 0,
+                        inFullPercentage: counts.totalCount > 0 ? (counts.inFullCount / counts.totalCount) * 100 : 0
+                    }))
+                    .sort((a, b) => a.otifPercentage - b.otifPercentage);
+            });
+
+            return { 
+                totalDeliveries, otifRate, onTimeRate, inFullRate, carrierPerformance, regionPerformance, 
+                topDelayReasons, totalCategorizedDelays: onTimeCount,
+                topDiscrepancyReasons, totalCategorizedDiscrepancies: inFullCount, 
+                carrierPerformanceByRegion
+            };
         };
 
-        loadInitialData();
-
-        return () => {
-            clearInterval(pollForStyles);
-            clearTimeout(timeout);
-            const scriptElement = document.querySelector(`script[src="${xlsxSrc}"]`);
-            if (scriptElement) {
-                document.body.removeChild(scriptElement);
+        const processFile = async (file) => {
+             if (!file) return;
+        
+            importError.textContent = '';
+            if (loadedFiles.some(f => f.name === file.name)) {
+                importError.textContent = `O ficheiro "${file.name}" já foi importado.`;
+                return;
             }
-        };
-    }, []);
 
-    const handleDateChange = (e) => {
-        setSelectedDateRange(prev => ({ ...prev, [e.target.name]: e.target.value }));
-    };
-    
-    const applyDateFilter = () => {
-        setAppliedDateRange(selectedDateRange);
-        setSelectedRegion(null); 
-    };
-
-    const clearDateFilter = () => {
-        setSelectedDateRange({ start: '', end: '' });
-        setAppliedDateRange({ start: '', end: '' });
-        setSelectedRegion(null);
-    };
-
-    const processFile = useCallback(async (file) => {
-        if (!file) return;
-        
-        setError('');
-        if (loadedFiles.some(f => f.name === file.name)) {
-            setError(`O ficheiro "${file.name}" já foi importado.`);
-            return;
-        }
-
-        const reader = new FileReader();
-        const fileExtension = file.name.split('.').pop().toLowerCase();
-        
-        reader.onload = async (e) => {
-            try {
-                let rawData = [];
-                 if (fileExtension === 'csv') {
-                    const text = e.target.result;
-                    const lines = text.trim().split('\n');
-                    const headers = lines[0].split(',').map(h => h.trim().replace(/"/g, ''));
-                    rawData = lines.slice(1).map(line => {
-                        const values = line.split(',');
-                        return headers.reduce((obj, header, index) => {
-                            obj[header] = values[index] ? values[index].trim().replace(/"/g, '') : '';
-                            return obj;
-                        }, {});
-                    });
-                } else if (fileExtension === 'xlsx') {
-                    if (typeof XLSX === 'undefined') {
-                       setError('A biblioteca de leitura de planilhas (XLSX) não pôde ser carregada.');
-                       return;
+            const reader = new FileReader();
+            const fileExtension = file.name.split('.').pop().toLowerCase();
+            
+            reader.onload = async (e) => {
+                try {
+                    let rawData = [];
+                     if (fileExtension === 'csv') {
+                        const text = e.target.result;
+                        const lines = text.trim().split(/\r?\n/);
+                        const headers = lines[0].split(',').map(h => h.trim().replace(/"/g, ''));
+                        rawData = lines.slice(1).map(line => {
+                            const values = line.split(',');
+                            return headers.reduce((obj, header, index) => {
+                                obj[header] = values[index] ? values[index].trim().replace(/"/g, '') : '';
+                                return obj;
+                            }, {});
+                        });
+                    } else if (fileExtension === 'xlsx') {
+                        if (typeof XLSX === 'undefined') {
+                           importError.textContent = 'A biblioteca de leitura de planilhas (XLSX) não pôde ser carregada.';
+                           return;
+                        }
+                        const data = new Uint8Array(e.target.result);
+                        const workbook = XLSX.read(data, { type: 'array' });
+                        const sheetName = workbook.SheetNames[0];
+                        const worksheet = workbook.Sheets[sheetName];
+                        rawData = XLSX.utils.sheet_to_json(worksheet);
+                    } else {
+                        importError.textContent = 'Formato de ficheiro não suportado. Use .csv ou .xlsx';
+                        return;
                     }
-                    const data = new Uint8Array(e.target.result);
-                    const workbook = XLSX.read(data, { type: 'array' });
-                    const sheetName = workbook.SheetNames[0];
-                    const worksheet = workbook.Sheets[sheetName];
-                    rawData = XLSX.utils.sheet_to_json(worksheet);
-                } else {
-                    setError('Formato de ficheiro não suportado. Use .csv ou .xlsx');
-                    return;
-                }
-                
-                if(rawData.length > 0 && !rawData[0]['Data Pedido']){
-                    setError("A coluna 'Data Pedido' é necessária e não foi encontrada.");
-                    return;
-                }
+                    
+                    if(rawData.length > 0 && !rawData[0]['Data Pedido']){
+                        importError.textContent = "A coluna 'Data Pedido' é necessária e não foi encontrada.";
+                        return;
+                    }
 
-                setLoadingMessage(`A guardar ${rawData.length.toLocaleString('pt-BR')} linhas...`);
+                    showLoading(`A guardar ${rawData.length.toLocaleString('pt-BR')} linhas...`);
 
+                    const db = await dbPromise;
+                    const dataTx = db.transaction(DATA_STORE, 'readwrite');
+                    const dataStore = dataTx.objectStore(DATA_STORE);
+                    rawData.forEach(row => dataStore.add({ ...row, fileName: file.name }));
+                    await new Promise(resolve => dataTx.oncomplete = resolve);
+
+                    const fileTx = db.transaction(FILE_STORE, 'readwrite');
+                    const fileStore = fileTx.objectStore(FILE_STORE);
+                    fileStore.add({ name: file.name, uploadDate: new Date().toISOString() });
+                    await new Promise(resolve => fileTx.oncomplete = resolve);
+                    
+                    allData.push(...rawData.map(r => ({...r, fileName: file.name})));
+                    loadedFiles.push({ name: file.name, uploadDate: new Date().toISOString() });
+
+                    renderLoadedFiles();
+                    switchView('dashboard');
+                    renderDashboard();
+                } catch (err) {
+                     importError.textContent = 'Ocorreu um erro ao processar o ficheiro.';
+                     console.error(err);
+                } finally {
+                    hideLoading();
+                }
+            };
+            reader.readAsArrayBuffer(file);
+        };
+        
+        const removeFile = async (fileNameToRemove) => {
+            try {
+                showLoading(`A remover o ficheiro ${fileNameToRemove}...`);
                 const db = await dbPromise;
+                
                 const dataTx = db.transaction(DATA_STORE, 'readwrite');
                 const dataStore = dataTx.objectStore(DATA_STORE);
-
-                rawData.forEach(row => {
-                    dataStore.add({ ...row, fileName: file.name });
-                });
+                const dataIndex = dataStore.index('fileName');
+                const request = dataIndex.openCursor(IDBKeyRange.only(fileNameToRemove));
                 
+                request.onsuccess = event => {
+                    const cursor = event.target.result;
+                    if(cursor){
+                        cursor.delete();
+                        cursor.continue();
+                    }
+                };
                 await new Promise(resolve => dataTx.oncomplete = resolve);
 
                 const fileTx = db.transaction(FILE_STORE, 'readwrite');
-                const fileStore = fileTx.objectStore(FILE_STORE);
-                fileStore.add({ name: file.name, uploadDate: new Date().toISOString() });
-                
+                fileTx.objectStore(FILE_STORE).delete(fileNameToRemove);
                 await new Promise(resolve => fileTx.oncomplete = resolve);
-                
-                // Atualiza o estado
-                setData(prev => [...prev, ...rawData.map(r => ({...r, fileName: file.name}))]);
-                setLoadedFiles(prev => [...prev, { name: file.name, uploadDate: new Date().toISOString() }]);
 
-                setCurrentView('dashboard');
-            } catch (err) {
-                 setError('Ocorreu um erro ao processar o ficheiro.');
-                 console.error(err);
+                allData = allData.filter(row => row.fileName !== fileNameToRemove);
+                loadedFiles = loadedFiles.filter(file => file.name !== fileNameToRemove);
+
+                renderLoadedFiles();
+                renderDashboard();
+            } catch (e) {
+                importError.textContent = "Erro ao remover o ficheiro.";
+                console.error(e);
             } finally {
-                setLoadingMessage('');
+                hideLoading();
             }
         };
 
-        reader.onerror = () => {
-            setError('Não foi possível ler o ficheiro.');
-        }
+        const clearAllData = async () => {
+            const confirmed = confirm("Tem a certeza que deseja limpar todo o histórico? Esta ação é irreversível.");
+            if (!confirmed) return;
 
-        if (fileExtension === 'csv') reader.readAsText(file, 'UTF-8');
-        else if (fileExtension === 'xlsx') reader.readAsArrayBuffer(file);
-        else setError('Formato de ficheiro não suportado.');
-
-    }, [loadedFiles]);
-
-    const handleFileChange = (e) => processFile(e.target.files[0]);
-    const handleDragEvents = (e, over) => { e.preventDefault(); e.stopPropagation(); setIsDragging(over); };
-    const handleDrop = (e) => {
-        handleDragEvents(e, false);
-        if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-            processFile(e.dataTransfer.files[0]);
-        }
-    };
-    
-    const removeFile = async (fileNameToRemove) => {
-        try {
-            setLoadingMessage(`A remover o ficheiro ${fileNameToRemove}...`);
-            const db = await dbPromise;
-            
-            // Remove os dados
-            const dataTx = db.transaction(DATA_STORE, 'readwrite');
-            const dataStore = dataTx.objectStore(DATA_STORE);
-            const dataIndex = dataStore.index('fileName');
-            const request = dataIndex.openCursor(IDBKeyRange.only(fileNameToRemove));
-            
-            request.onsuccess = event => {
-                const cursor = event.target.result;
-                if(cursor){
-                    cursor.delete();
-                    cursor.continue();
-                }
-            };
-            await new Promise(resolve => dataTx.oncomplete = resolve);
-
-            // Remove o registo do ficheiro
-            const fileTx = db.transaction(FILE_STORE, 'readwrite');
-            fileTx.objectStore(FILE_STORE).delete(fileNameToRemove);
-            await new Promise(resolve => fileTx.oncomplete = resolve);
-
-            // Atualiza o estado
-            setData(prev => prev.filter(row => row.fileName !== fileNameToRemove));
-            setLoadedFiles(prev => prev.filter(file => file.name !== fileNameToRemove));
-
-        } catch (e) {
-            setError("Erro ao remover o ficheiro.");
-            console.error(e);
-        } finally {
-            setLoadingMessage('');
-        }
-    };
-
-    const clearAllData = async () => {
-        if (!confirmClear) {
-            setConfirmClear(true);
-            setTimeout(() => setConfirmClear(false), 3000);
-            return;
-        }
-        try {
-            setLoadingMessage('A limpar todo o histórico...');
-            const db = await dbPromise;
-            
-            const dataTx = db.transaction(DATA_STORE, 'readwrite');
-            dataTx.objectStore(DATA_STORE).clear();
-            await new Promise(resolve => dataTx.oncomplete = resolve);
-            
-            const fileTx = db.transaction(FILE_STORE, 'readwrite');
-            fileTx.objectStore(FILE_STORE).clear();
-            await new Promise(resolve => fileTx.oncomplete = resolve);
-
-            setData([]);
-            setLoadedFiles([]);
-            setConfirmClear(false);
-        } catch (e) {
-            setError("Erro ao limpar o histórico.");
-            console.error(e);
-        } finally {
-            setLoadingMessage('');
-        }
-    };
-
-    const metrics = useMemo(() => {
-        if (data.length === 0) return null;
-
-        const filteredData = data.filter(row => {
-            const rowDateStr = row['Data Pedido'];
-            if (!rowDateStr) return false; 
-            
-            let rowDate;
-            if (typeof rowDateStr === 'number') {
-                const excelEpoch = new Date(1899, 11, 30);
-                rowDate = new Date(excelEpoch.getTime() + rowDateStr * 86400000);
-            } else if (String(rowDateStr).includes('/')) {
-                const parts = rowDateStr.split('/');
-                rowDate = new Date(`${parts[2]}-${parts[1]}-${parts[0]}T00:00:00`);
-            }
-             else { 
-                 rowDate = new Date(rowDateStr + 'T00:00:00');
-            }
-
-            if(isNaN(rowDate.getTime())) return false; 
-
-            const startDate = appliedDateRange.start ? new Date(appliedDateRange.start + 'T00:00:00') : null;
-            const endDate = appliedDateRange.end ? new Date(appliedDateRange.end + 'T23:59:59') : null;
-
-            if (startDate && rowDate < startDate) return false;
-            if (endDate && rowDate > endDate) return false;
-            
-            return true;
-        });
-
-        const processedData = filteredData.map(row => {
-            const isOnTime = row['Status Entrega'] !== 'Fora do Prazo';
-            const isInFull = !row['Entrega divergente?'] || String(row['Entrega divergente?']).toLowerCase() !== 'sim';
-            return { ...row, isOnTime, isInFull };
-        });
-
-        const totalDeliveries = filteredData.length;
-        const otifCount = processedData.filter(d => d.isOnTime && d.isInFull).length;
-        const onTimeCount = processedData.filter(d => d.isOnTime).length;
-        const inFullCount = processedData.filter(d => d.isInFull).length;
-        
-        const otifRate = totalDeliveries > 0 ? (otifCount / totalDeliveries) * 100 : 0;
-        const onTimeRate = totalDeliveries > 0 ? (onTimeCount / totalDeliveries) * 100 : 0;
-        const inFullRate = totalDeliveries > 0 ? (inFullCount / totalDeliveries) * 100 : 0;
-
-        const byCarrier = processedData.reduce((acc, curr) => {
-            const carrier = curr['TRANSPORTADORA'];
-            if (!carrier) return acc;
-            if (!acc[carrier]) acc[carrier] = { total: 0, otif: 0 };
-            acc[carrier].total++;
-            if (curr.isOnTime && curr.isInFull) acc[carrier].otif++;
-            return acc;
-        }, {});
-        const carrierPerformance = Object.entries(byCarrier).map(([label, values]) => ({
-            label, value: (values.otif / values.total) * 100
-        })).sort((a, b) => b.value - a.value);
-
-        const byRegion = processedData.reduce((acc, curr) => {
-            const region = curr['Região'];
-            if (!region) return acc;
-            if (!acc[region]) acc[region] = { total: 0, otif: 0 };
-            acc[region].total++;
-            if (curr.isOnTime && curr.isInFull) acc[region].otif++;
-            return acc;
-        }, {});
-        const regionPerformance = Object.entries(byRegion).map(([label, values]) => ({
-            label, value: (values.otif / values.total) * 100
-        })).sort((a, b) => b.value - a.value);
-
-        const delayReasons = processedData.filter(row => !row.isOnTime && row['Motivos']).reduce((acc, curr) => {
-            const reason = curr['Motivos'];
-            acc[reason] = (acc[reason] || 0) + 1;
-            return acc;
-        }, {});
-        const topDelayReasons = Object.entries(delayReasons).map(([reason, count]) => ({ reason, count })).sort((a, b) => b.count - a.count);
-        
-        const discrepancyReasons = processedData.filter(row => !row.isInFull && row['Divergência']).reduce((acc, curr) => {
-            const reason = curr['Divergência'];
-            acc[reason] = (acc[reason] || 0) + 1;
-            return acc;
-        }, {});
-        const topDiscrepancyReasons = Object.entries(discrepancyReasons).map(([reason, count]) => ({ reason, count })).sort((a, b) => b.count - a.count);
-        
-        const carrierPerformanceByRegion = processedData.reduce((acc, curr) => {
-            const region = curr['Região'];
-            const carrier = curr['TRANSPORTADORA'];
-            if (!region || !carrier) return acc;
-            if (!acc[region]) acc[region] = {};
-            if (!acc[region][carrier]) acc[region][carrier] = { totalCount: 0, onTimeCount: 0, inFullCount: 0, otifCount: 0 };
-            acc[region][carrier].totalCount++;
-            if (curr.isOnTime) acc[region][carrier].onTimeCount++;
-            if (curr.isInFull) acc[region][carrier].inFullCount++;
-            if (curr.isOnTime && curr.isInFull) acc[region][carrier].otifCount++;
-            return acc;
-        }, {});
-
-        Object.keys(carrierPerformanceByRegion).forEach(region => {
-            carrierPerformanceByRegion[region] = Object.entries(carrierPerformanceByRegion[region])
-                .map(([carrierLabel, counts]) => ({
-                    label: carrierLabel,
-                    totalCount: counts.totalCount,
-                    delayCount: counts.totalCount - counts.onTimeCount,
-                    otifPercentage: counts.totalCount > 0 ? (counts.otifCount / counts.totalCount) * 100 : 0,
-                    onTimePercentage: counts.totalCount > 0 ? (counts.onTimeCount / counts.totalCount) * 100 : 0,
-                    inFullPercentage: counts.totalCount > 0 ? (counts.inFullCount / counts.totalCount) * 100 : 0
-                }))
-                .sort((a, b) => a.otifPercentage - b.otifPercentage);
-        });
-
-        return { 
-            totalDeliveries, otifRate, onTimeRate, inFullRate, carrierPerformance, regionPerformance, 
-            topDelayReasons, totalCategorizedDelays: onTimeCount,
-            topDiscrepancyReasons, totalCategorizedDiscrepancies: inFullCount, 
-            carrierPerformanceByRegion
-        };
-    }, [data, appliedDateRange]);
-    
-    const renderImportView = () => (
-         <div className="flex flex-col items-center justify-center p-4 gap-8">
-            <div 
-                className={`w-full max-w-2xl p-8 text-center bg-white rounded-lg shadow-lg border-2 border-dashed ${isDragging ? 'border-blue-500 bg-blue-50' : 'border-gray-300'}`}
-                onDragOver={(e) => handleDragEvents(e, true)} onDragLeave={(e) => handleDragEvents(e, false)} onDrop={handleDrop}
-            >
-                <svg className="mx-auto h-12 w-12 text-gray-400" stroke="currentColor" fill="none" viewBox="0 0 48 48" aria-hidden="true"><path d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 01-4 4H12a4 4 0 01-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28m0 0l4 4m4-24h8m-4-4v8" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
-                <h2 className="mt-4 text-2xl font-bold text-gray-800">Importar Novo Ficheiro</h2>
-                <p className="mt-2 text-sm text-gray-500">Arraste e solte um ficheiro .csv ou .xlsx aqui.</p>
-                <div className="mt-6">
-                    <input type="file" id="file-upload" className="hidden" accept=".csv, .xlsx" onChange={handleFileChange} />
-                    <label htmlFor="file-upload" className="cursor-pointer bg-blue-500 text-white font-bold py-2 px-4 rounded-md hover:bg-blue-600 transition-colors">
-                        Ou Selecione um Ficheiro
-                    </label>
-                </div>
-                 {error && <p className="mt-4 text-sm text-red-600">{error}</p>}
-            </div>
-            <div className="w-full max-w-2xl p-8 bg-white rounded-lg shadow-lg">
-                <h3 className="text-xl font-bold text-gray-800 mb-4">Ficheiros Carregados</h3>
-                {loadedFiles.length > 0 ? (
-                    <ul className="space-y-3">
-                        {loadedFiles.map(file => (
-                            <li key={file.name} className="flex justify-between items-center bg-gray-50 p-3 rounded-md">
-                                <span className="text-gray-700 truncate pr-4">{file.name}</span>
-                                <button onClick={() => removeFile(file.name)} className="text-red-500 hover:text-red-700 font-semibold flex-shrink-0">Remover</button>
-                            </li>
-                        ))}
-                    </ul>
-                ) : (
-                    <p className="text-gray-500">Nenhum ficheiro foi carregado ainda.</p>
-                )}
-                 <div className="mt-6 border-t pt-6">
-                    <button onClick={clearAllData} className={`w-full font-bold py-2 px-4 rounded-md transition-colors ${confirmClear ? 'bg-red-700 text-white' : 'bg-red-500 text-white hover:bg-red-600'}`}>
-                        {confirmClear ? 'Tem a certeza? Clique para confirmar' : 'Limpar Todo o Histórico'}
-                    </button>
-                </div>
-            </div>
-        </div>
-    );
-    
-    const renderDashboardView = () => {
-        if (data.length === 0 && loadingMessage) {
-            return null; // Don't show "welcome" message while initially loading
-        }
-
-        if (data.length === 0) {
-            return (
-                 <div className="text-center bg-white p-8 rounded-lg shadow-md">
-                    <svg xmlns="http://www.w3.org/2000/svg" className="mx-auto h-16 w-16 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V7a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
-                    <h2 className="mt-4 text-2xl font-bold text-gray-800 mb-4">Bem-vindo ao Dashboard OTIF</h2>
-                    <p className="text-gray-600 mb-6">Nenhum dado foi carregado. Por favor, vá à aba "Importar Arquivo" para começar.</p>
-                    <button onClick={() => setCurrentView('import')} className="bg-blue-500 text-white font-bold py-2 px-6 rounded-md hover:bg-blue-600 transition-colors">
-                        Importar Arquivo
-                    </button>
-                </div>
-            );
-        }
-        
-        return (
-            <>
-                 <header className="mb-8">
-                    <div className="flex flex-wrap justify-between items-start gap-4 mb-6">
-                        <div>
-                            <h2 className="text-2xl font-bold text-gray-800">Resumo da Performance</h2>
-                            <p className="text-gray-600">Analisando {loadedFiles.length} ficheiro(s) com {data.length.toLocaleString('pt-BR')} linhas.</p>
-                        </div>
-                    </div>
-                    <div className="bg-white p-4 rounded-lg shadow-md flex flex-wrap items-center gap-4">
-                        <span className="font-semibold text-gray-700">Filtrar por Período:</span>
-                        <div>
-                            <label htmlFor="start" className="text-sm text-gray-600 mr-2">De:</label>
-                            <input type="date" name="start" id="start" value={selectedDateRange.start} onChange={handleDateChange} className="border-gray-300 rounded-md shadow-sm p-2" />
-                        </div>
-                        <div>
-                           <label htmlFor="end" className="text-sm text-gray-600 mr-2">Até:</label>
-                           <input type="date" name="end" id="end" value={selectedDateRange.end} onChange={handleDateChange} className="border-gray-300 rounded-md shadow-sm p-2" />
-                        </div>
-                        <button onClick={applyDateFilter} className="bg-blue-500 text-white font-bold py-2 px-4 rounded-md hover:bg-blue-600 transition-colors">Aplicar</button>
-                        <button onClick={clearDateFilter} className="bg-gray-300 text-gray-800 font-bold py-2 px-4 rounded-md hover:bg-gray-400 transition-colors">Limpar Filtro</button>
-                    </div>
-                </header>
+            try {
+                showLoading('A limpar todo o histórico...');
+                const db = await dbPromise;
                 
-                {!metrics || metrics.totalDeliveries === 0 ? (
-                    <div className="bg-white p-6 rounded-lg shadow-md text-center">
-                         <h3 className="text-lg font-semibold mb-4 text-gray-700">Nenhum dado encontrado</h3>
-                         <p className="text-gray-500">Não há registos que correspondam ao período selecionado.</p>
-                    </div>
-                ) : selectedRegion ? (
-                     <RegionDetailView region={selectedRegion} data={metrics.carrierPerformanceByRegion[selectedRegion]} onBack={() => setSelectedRegion(null)} />
-                ) : (
-                    <>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-                            <StatCard title="OTIF Geral" value={`${metrics.otifRate.toFixed(2)}%`} color="bg-blue-100 text-blue-600" icon={<svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>} />
-                            <StatCard title="On-Time (No Prazo)" value={`${metrics.onTimeRate.toFixed(2)}%`} color="bg-green-100 text-green-600" icon={<svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>} />
-                            <StatCard title="In-Full (Sem Divergência)" value={`${metrics.inFullRate.toFixed(2)}%`} color="bg-indigo-100 text-indigo-600" icon={<svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" /></svg>} />
-                            <StatCard title="Total de Linhas" value={metrics.totalDeliveries.toLocaleString('pt-BR')} color="bg-gray-200 text-gray-700" icon={<svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2H5a2 2 0 00-2 2v2m14 0h-2" /></svg>} />
-                        </div>
-                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-                            <BarChart data={metrics.carrierPerformance} title="Performance OTIF por Transportadora" barColorClass="bg-blue-500" />
-                            <BarChart data={metrics.regionPerformance} title="Performance OTIF por Região (Clique para detalhar)" barColorClass="bg-teal-500" onBarClick={setSelectedRegion}/>
-                        </div>
-                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                            <ReasonTable data={metrics.topDelayReasons} title="Principais Motivos de Atraso" total={metrics.totalDeliveries - metrics.totalCategorizedDelays} />
-                            <ReasonTable data={metrics.topDiscrepancyReasons} title="Principais Motivos de Divergência" total={metrics.totalDeliveries - metrics.totalCategorizedDiscrepancies} />
-                        </div>
-                    </>
-                )}
-            </>
-        );
-    };
+                const dataTx = db.transaction(DATA_STORE, 'readwrite');
+                dataTx.objectStore(DATA_STORE).clear();
+                await new Promise(resolve => dataTx.oncomplete = resolve);
+                
+                const fileTx = db.transaction(FILE_STORE, 'readwrite');
+                fileTx.objectStore(FILE_STORE).clear();
+                await new Promise(resolve => fileTx.oncomplete = resolve);
 
-    if (!stylesLoaded) {
-        return <LoadingOverlay message="A carregar interface..." />;
-    }
+                allData = [];
+                loadedFiles = [];
+                
+                renderLoadedFiles();
+                renderDashboard();
+            } catch (e) {
+                importError.textContent = "Erro ao limpar o histórico.";
+                console.error(e);
+            } finally {
+                hideLoading();
+            }
+        };
 
-    return (
-        <div className="bg-gray-100 min-h-screen font-sans">
-            {loadingMessage && <LoadingOverlay message={loadingMessage} />}
-            <header className="bg-white shadow-md sticky top-0 z-10">
-                <div className="container mx-auto flex items-center justify-between p-4">
-                     <h1 className="text-2xl font-bold text-gray-800">Análise OTIF</h1>
-                     <nav>
-                        <button onClick={() => setCurrentView('dashboard')} className={`py-2 px-4 font-semibold rounded-md transition-colors ${currentView === 'dashboard' ? 'bg-blue-500 text-white' : 'text-gray-600 hover:bg-gray-200'}`}>
-                            Dashboard
-                        </button>
-                        <button onClick={() => setCurrentView('import')} className={`ml-4 py-2 px-4 font-semibold rounded-md transition-colors ${currentView === 'import' ? 'bg-blue-500 text-white' : 'text-gray-600 hover:bg-gray-200'}`}>
-                            Importar Arquivo
-                        </button>
-                     </nav>
-                </div>
-            </header>
-            <main className="container mx-auto p-4 sm:p-6 lg:p-8">
-                {currentView === 'import' && renderImportView()}
-                {currentView === 'dashboard' && renderDashboardView()}
-            </main>
-        </div>
-    );
-}
+        // --- EVENT LISTENERS ---
+        navDashboard.addEventListener('click', () => switchView('dashboard'));
+        navImport.addEventListener('click', () => switchView('import'));
+        fileUpload.addEventListener('change', (e) => processFile(e.target.files[0]));
+        
+        dropZone.addEventListener('dragover', (e) => { e.preventDefault(); e.stopPropagation(); dropZone.classList.add('border-blue-500', 'bg-blue-50'); });
+        dropZone.addEventListener('dragleave', (e) => { e.preventDefault(); e.stopPropagation(); dropZone.classList.remove('border-blue-500', 'bg-blue-50'); });
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            dropZone.classList.remove('border-blue-500', 'bg-blue-50');
+            if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+                processFile(e.dataTransfer.files[0]);
+            }
+        });
+        
+        document.body.addEventListener('click', (e) => {
+            if (e.target.id === 'go-to-import-btn') {
+                switchView('import');
+            }
+            if(e.target.classList.contains('remove-file-btn')) {
+                const filename = e.target.dataset.filename;
+                removeFile(filename);
+            }
+            if(e.target.id === 'clear-history-btn') {
+                clearAllData();
+            }
+            if(e.target.id === 'apply-filter-btn') {
+                appliedDateRange.start = document.getElementById('start-date').value;
+                appliedDateRange.end = document.getElementById('end-date').value;
+                selectedRegion = null;
+                renderDashboard();
+            }
+            if(e.target.id === 'clear-filter-btn') {
+                 appliedDateRange = { start: '', end: '' };
+                 selectedRegion = null;
+                 renderDashboard();
+            }
+             if(e.target.closest('.region-bar')) {
+                selectedRegion = e.target.closest('.region-bar').dataset.label;
+                renderDashboard();
+            }
+            if(e.target.id === 'back-to-dashboard') {
+                selectedRegion = null;
+                renderDashboard();
+            }
+        });
 
+        // --- INICIALIZAÇÃO ---
+        const initializeApp = async () => {
+            showLoading('A carregar dados locais...');
+            try {
+                const db = await dbPromise;
+                const fileTx = db.transaction(FILE_STORE, 'readonly');
+                const dataTx = db.transaction(DATA_STORE, 'readonly');
+
+                const filesReq = fileTx.objectStore(FILE_STORE).getAll();
+                const dataReq = dataTx.objectStore(DATA_STORE).getAll();
+                
+                filesReq.onsuccess = () => {
+                    loadedFiles = filesReq.result;
+                    renderLoadedFiles();
+                };
+                
+                dataReq.onsuccess = () => {
+                    allData = dataReq.result;
+                    renderDashboard();
+                };
+            } catch (err) {
+                importError.textContent = "Não foi possível carregar os dados guardados.";
+                console.error(err);
+            } finally {
+                hideLoading();
+            }
+        };
+
+        initializeApp();
+
+    </script>
+</body>
+</html>
