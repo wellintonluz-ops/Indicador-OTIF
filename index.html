@@ -457,12 +457,12 @@
                     <button id="back-to-dashboard" class="mb-4 bg-blue-500 text-white font-bold py-2 px-4 rounded-md hover:bg-blue-600 transition-colors">&larr; Voltar</button>
                     <h3 class="text-lg font-semibold mb-4 text-gray-700">Histórico Mensal de OTIF para <span class="text-blue-600">${carrierName}</span> (${year})</h3>
                     <div class="relative flex" style="height: 300px;">
-                        <div class="flex flex-col justify-between text-xs text-gray-500 pr-2 border-r border-gray-200 h-full pb-5">
-                            <span>100%</span>
-                            <span>75%</span>
-                            <span>50%</span>
-                            <span>25%</span>
-                            <span>0%</span>
+                        <div class="relative w-10 flex-shrink-0 pr-2 text-xs text-right text-gray-500 h-full pb-5 border-r border-gray-200">
+                            <span class="absolute right-2" style="bottom: 100%; transform: translateY(50%);">100%</span>
+                            <span class="absolute right-2" style="bottom: 75%; transform: translateY(50%);">75%</span>
+                            <span class="absolute right-2" style="bottom: 50%; transform: translateY(50%);">50%</span>
+                            <span class="absolute right-2" style="bottom: 25%; transform: translateY(50%);">25%</span>
+                            <span class="absolute right-2 bottom-0">0%</span>
                         </div>
                         <div class="flex-1 grid grid-cols-12 pl-2 border-b border-gray-200">`;
 
@@ -472,10 +472,10 @@
 
                 if (item.value !== undefined) {
                      html += `
-                        <div class="absolute text-center w-full text-xs font-bold text-gray-800" style="bottom: calc(${(item.value / 1.5)}% + 4px);">
+                        <div class="absolute text-center w-full text-xs font-bold text-gray-800" style="bottom: calc(${item.value}% + 4px);">
                            ${item.value.toFixed(1)}%
                         </div>
-                        <div class="${getOtifColorClass(item.value)} w-3/4" style="height: ${(item.value / 1.5)}%;"></div>`;
+                        <div class="${getOtifColorClass(item.value)} w-3/4" style="height: ${item.value}%;"></div>`;
                 }
                 
                 html += `</div>`;
@@ -510,12 +510,12 @@
                 <div class="bg-white p-6 rounded-lg shadow-md">
                     <h3 class="text-lg font-semibold mb-4 text-gray-700">${title} (${year})</h3>
                     <div class="relative flex" style="height: 250px;">
-                        <div class="flex flex-col justify-between text-xs text-gray-500 pr-2 border-r border-gray-200 h-full pb-5">
-                            <span>100%</span>
-                            <span>75%</span>
-                            <span>50%</span>
-                            <span>25%</span>
-                            <span>0%</span>
+                        <div class="relative w-10 flex-shrink-0 pr-2 text-xs text-right text-gray-500 h-full pb-5 border-r border-gray-200">
+                             <span class="absolute right-2" style="bottom: 100%; transform: translateY(50%);">100%</span>
+                            <span class="absolute right-2" style="bottom: 75%; transform: translateY(50%);">75%</span>
+                            <span class="absolute right-2" style="bottom: 50%; transform: translateY(50%);">50%</span>
+                            <span class="absolute right-2" style="bottom: 25%; transform: translateY(50%);">25%</span>
+                            <span class="absolute right-2 bottom-0">0%</span>
                         </div>
                         <div class="flex-1 grid pl-2 border-b border-gray-200" style="grid-template-columns: repeat(${visibleData.length}, minmax(0, 1fr));">`;
 
@@ -524,10 +524,10 @@
                 html += `<div class="relative flex justify-center items-end h-full px-1 group">`;
                 if (value !== undefined) {
                      html += `
-                        <div class="absolute text-center w-full text-xs font-bold text-gray-800" style="bottom: calc(${(value / 1.5)}% + 4px);">
+                        <div class="absolute text-center w-full text-xs font-bold text-gray-800" style="bottom: calc(${value}% + 4px);">
                            ${value.toFixed(1)}%
                         </div>
-                        <div class="${getOtifColorClass(value)} w-3/4" style="height: ${(value / 1.5)}%;"></div>`;
+                        <div class="${getOtifColorClass(value)} w-3/4" style="height: ${value}%;"></div>`;
                 }
                 html += `</div>`;
             });
