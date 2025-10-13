@@ -97,6 +97,7 @@
         let selectedRegion = null;
         let selectedCarrier = null;
         let selectedReason = null; // { reason: '...', type: 'delay' | 'discrepancy' }
+        let isDbAvailable = true;
 
         // --- ELEMENTOS DO DOM ---
         const loadingOverlay = document.getElementById('loading-overlay');
@@ -113,19 +114,27 @@
 
         // --- BASE DE DADOS INDEXEDDB ---
         const dbPromise = new Promise((resolve, reject) => {
-            const request = indexedDB.open(DB_NAME, DB_VERSION);
-            request.onerror = () => reject("Erro ao abrir a base de dados.");
-            request.onsuccess = () => resolve(request.result);
-            request.onupgradeneeded = event => {
-                const db = event.target.result;
-                if (!db.objectStoreNames.contains(FILE_STORE)) {
-                    db.createObjectStore(FILE_STORE, { keyPath: 'name' });
-                }
-                if (!db.objectStoreNames.contains(DATA_STORE)) {
-                    const dataStore = db.createObjectStore(DATA_STORE, { autoIncrement: true });
-                    dataStore.createIndex('fileName', 'fileName', { unique: false });
-                }
-            };
+            try {
+                const request = indexedDB.open(DB_NAME, DB_VERSION);
+                request.onerror = (event) => {
+                    console.error("Erro ao abrir IndexedDB:", event.target.error);
+                    reject(event.target.error);
+                };
+                request.onsuccess = () => resolve(request.result);
+                request.onupgradeneeded = event => {
+                    const db = event.target.result;
+                    if (!db.objectStoreNames.contains(FILE_STORE)) {
+                        db.createObjectStore(FILE_STORE, { keyPath: 'name' });
+                    }
+                    if (!db.objectStoreNames.contains(DATA_STORE)) {
+                        const dataStore = db.createObjectStore(DATA_STORE, { autoIncrement: true });
+                        dataStore.createIndex('fileName', 'fileName', { unique: false });
+                    }
+                };
+            } catch (e) {
+                console.error("IndexedDB não é suportado ou está bloqueado:", e);
+                reject(e);
+            }
         });
         
         // --- FUNÇÕES DE CONTROLO ---
@@ -1006,8 +1015,21 @@
                     renderDashboard();
                 };
             } catch (err) {
-                importError.textContent = "Não foi possível carregar os dados guardados.";
-                console.error(err);
+                isDbAvailable = false;
+                console.error("IndexedDB não está disponível. Os dados não serão guardados.", err);
+                const errorBanner = document.createElement('div');
+                errorBanner.id = 'error-banner';
+                errorBanner.className = 'bg-red-100 border-l-4 border-red-500 text-red-700 p-4 sticky top-0 z-20';
+                errorBanner.setAttribute('role', 'alert');
+                errorBanner.innerHTML = `
+                    <p class="font-bold">Erro de Armazenamento</p>
+                    <p>Não foi possível aceder ao armazenamento local. Os dados não serão guardados entre sessões. Isto pode acontecer se estiver em modo de navegação anónima ou se o armazenamento estiver desativado nas definições do seu navegador.</p>
+                `;
+                document.body.insertBefore(errorBanner, document.body.firstChild);
+                allData = [];
+                loadedFiles = [];
+                renderLoadedFiles();
+                renderDashboard();
             } finally {
                 hideLoading();
             }
