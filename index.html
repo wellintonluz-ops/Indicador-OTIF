@@ -1,493 +1,671 @@
-<!DOCTYPE html>
-<html lang="pt-br">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Apontamento de Produção</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&display=swap');
-        body {
-            font-family: 'Inter', sans-serif;
-            background-color: #f3f4f6;
-            color: #1f2937;
-        }
-    </style>
-    <!-- Firebase SDKs -->
-    <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, collection, addDoc, onSnapshot, query, getDocs, Timestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-        import { setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-        
-        // Exposing Firebase services globally for use in the main script
-        window.firebase = { initializeApp, getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged, getFirestore, collection, addDoc, onSnapshot, query, getDocs, Timestamp, setLogLevel };
-    </script>
-</head>
-<body class="bg-gray-100 min-h-screen flex items-center justify-center p-4">
-    <div class="bg-white p-8 rounded-2xl shadow-xl w-full max-w-2xl border border-gray-200">
-        <h1 class="text-3xl font-bold text-center mb-6 text-gray-800">Apontamento de Produção</h1>
-        
-        <div class="text-center text-sm mb-4 text-gray-500">
-            <p>ID do Usuário: <span id="userIdDisplay" class="font-mono text-xs">Carregando...</span></p>
-        </div>
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 
-        <!-- Formulário de Apontamento -->
-        <div class="space-y-4">
-            <div>
-                <label for="responsavel" class="block text-sm font-medium text-gray-700">Nome do Responsável</label>
-                <input type="text" id="responsavel" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 p-2" placeholder="Digite o nome aqui...">
-            </div>
+// --- COMPONENTES AUXILIARES ---
 
-            <div>
-                <label for="codigoProduto" class="block text-sm font-medium text-gray-700">Código do Produto</label>
-                <select id="codigoProduto" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 p-2">
-                    <option value="" selected disabled>Selecione um código...</option>
-                    <option value="CAC0001-C">CAC0001-C</option>
-                    <option value="CBC0010-C">CBC0010-C</option>
-                    <option value="CAL0002-C">CAL0002-C</option>
-                </select>
-            </div>
-
-            <div>
-                <label for="quantidade" class="block text-sm font-medium text-gray-700">Quantidade Produzida</label>
-                <input type="number" id="quantidade" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 p-2" placeholder="Ex: 100">
-            </div>
-        </div>
-
-        <!-- Botões de Controle da Ordem -->
-        <div class="mt-6 flex flex-col sm:flex-row justify-center space-y-4 sm:space-y-0 sm:space-x-4">
-            <button id="iniciarBtn" class="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2 px-6 rounded-lg transition-colors shadow-lg">Iniciar Ordem</button>
-            <button id="pausarBtn" class="bg-yellow-500 hover:bg-yellow-600 text-white font-semibold py-2 px-6 rounded-lg transition-colors shadow-lg" disabled>Pausar</button>
-            <button id="finalizarBtn" class="bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-6 rounded-lg transition-colors shadow-lg" disabled>Finalizar Ordem</button>
-            <button id="exportarBtn" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-6 rounded-lg transition-colors shadow-lg">Download CSV</button>
-        </div>
-
-        <!-- Display de Informações -->
-        <div id="display" class="mt-8 bg-gray-50 p-6 rounded-lg border border-gray-200">
-            <h2 class="text-xl font-semibold mb-4 text-gray-800">Resumo da Ordem</h2>
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                    <span class="font-medium text-gray-700">Início:</span>
-                    <span id="horaInicio" class="font-light text-gray-600">--</span>
-                </div>
-                <div>
-                    <span class="font-medium text-gray-700">Fim:</span>
-                    <span id="horaFim" class="font-light text-gray-600">--</span>
-                </div>
-            </div>
-            <div class="mt-4">
-                <span class="font-medium text-gray-700">Tempo Líquido de Produção:</span>
-                <span id="tempoLiquido" class="font-bold text-green-600 text-lg">--</span>
-            </div>
-            <div class="mt-2">
-                <span class="font-medium text-gray-700">Produtividade:</span>
-                <span id="produtividade" class="font-bold text-green-600 text-lg">--</span>
-            </div>
-        </div>
-
-        <!-- Registro de Pausas -->
-        <div id="pausasContainer" class="mt-8 bg-gray-50 p-6 rounded-lg border border-gray-200">
-            <h3 class="text-xl font-semibold mb-4 text-gray-800">Registro de Pausas</h3>
-            <ul id="listaPausas" class="list-disc pl-5 space-y-2 text-gray-600"></ul>
-        </div>
-        
-        <!-- Histórico de Apontamentos -->
-        <div id="historicoContainer" class="mt-8 bg-gray-50 p-6 rounded-lg border border-gray-200">
-            <h3 class="text-xl font-semibold mb-4 text-gray-800">Histórico de Apontamentos</h3>
-            <ul id="historicoLista" class="list-none space-y-4">
-                <li class="text-gray-500">Carregando histórico...</li>
-            </ul>
-        </div>
-
-        <!-- Modal para Justificativa de Pausa (simulando um prompt) -->
-        <div id="justificativaModal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center">
-            <div class="bg-white p-6 rounded-lg shadow-xl w-full max-w-md border border-gray-200">
-                <h3 class="text-lg font-bold mb-4">Justificativa da Pausa</h3>
-                <textarea id="justificativaInput" rows="4" class="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 p-2" placeholder="Motivo da pausa (ex: café, manutenção, etc.)"></textarea>
-                <div class="mt-4 flex justify-end space-x-2">
-                    <button id="salvarJustificativaBtn" class="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2 px-4 rounded-lg">Salvar</button>
-                    <button id="cancelarJustificativaBtn" class="bg-gray-300 hover:bg-gray-400 text-gray-800 font-semibold py-2 px-4 rounded-lg">Cancelar</button>
-                </div>
-            </div>
-        </div>
-
-        <!-- Modal de Aviso -->
-        <div id="avisoModal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center">
-            <div class="bg-white p-6 rounded-lg shadow-xl w-full max-w-sm border border-gray-200 text-center">
-                <p id="avisoText" class="text-lg mb-4 text-gray-700">--</p>
-                <button id="fecharAvisoBtn" class="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2 px-4 rounded-lg">OK</button>
-            </div>
+const LoadingOverlay = ({ message }) => (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div className="bg-white p-6 rounded-lg shadow-xl flex items-center">
+            <svg className="animate-spin h-5 w-5 mr-3 text-blue-500" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+            <span className="text-gray-700 font-semibold">{message || "A processar..."}</span>
         </div>
     </div>
+);
 
-    <script type="module">
-        // Importa os módulos do Firebase expostos no objeto 'window'
-        const { initializeApp, getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged, getFirestore, collection, addDoc, onSnapshot, query, getDocs, Timestamp, setLogLevel } = window.firebase;
-        
-        // Obtém referências para os elementos do DOM
-        const responsavelInput = document.getElementById('responsavel');
-        const codigoProdutoSelect = document.getElementById('codigoProduto');
-        const quantidadeInput = document.getElementById('quantidade');
-        
-        const iniciarBtn = document.getElementById('iniciarBtn');
-        const pausarBtn = document.getElementById('pausarBtn');
-        const finalizarBtn = document.getElementById('finalizarBtn');
-        const exportarBtn = document.getElementById('exportarBtn');
+const StatCard = ({ title, value, icon, color }) => (
+    <div className="bg-white p-6 rounded-lg shadow-md flex items-center">
+        <div className={`mr-4 p-3 rounded-full ${color}`}>
+            {icon}
+        </div>
+        <div>
+            <p className="text-sm text-gray-500">{title}</p>
+            <p className="text-2xl font-bold">{value}</p>
+        </div>
+    </div>
+);
 
-        const horaInicioSpan = document.getElementById('horaInicio');
-        const horaFimSpan = document.getElementById('horaFim');
-        const tempoLiquidoSpan = document.getElementById('tempoLiquido');
-        const produtividadeSpan = document.getElementById('produtividade');
-        const listaPausasUl = document.getElementById('listaPausas');
-        const historicoListaUl = document.getElementById('historicoLista');
-        const userIdDisplay = document.getElementById('userIdDisplay');
+const BarChart = ({ data, title, barColorClass = 'bg-blue-500', onBarClick }) => {
+    if (!data || data.length === 0) {
+        return (
+            <div className="bg-white p-6 rounded-lg shadow-md">
+                <h3 className="text-lg font-semibold mb-4 text-gray-700">{title}</h3>
+                <p className="text-gray-500">Não há dados suficientes para exibir.</p>
+            </div>
+        );
+    }
 
-        const justificativaModal = document.getElementById('justificativaModal');
-        const justificativaInput = document.getElementById('justificativaInput');
-        const salvarJustificativaBtn = document.getElementById('salvarJustificativaBtn');
-        const cancelarJustificativaBtn = document.getElementById('cancelarJustificativaBtn');
-        
-        const avisoModal = document.getElementById('avisoModal');
-        const avisoText = document.getElementById('avisoText');
-        const fecharAvisoBtn = document.getElementById('fecharAvisoBtn');
+    const maxValue = Math.max(...data.map(item => item.value));
 
-        // Variáveis de estado da aplicação
-        let inicioProducao = null;
-        let inicioPausa = null;
-        let tempoTotalPausas = 0;
-        let emPausa = false;
-        let pausasRegistradas = [];
-        let db, auth, userId;
-        
-        // Variáveis globais fornecidas pelo ambiente
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-        const firebaseConfig = {
-          apiKey: "AIzaSyBDb1E_wHtmISvNG31RhlmP979890X7nxY",
-          authDomain: "apontamentoproducao-f141e.firebaseapp.com",
-          projectId: "apontamentoproducao-f141e",
-          storageBucket: "apontamentoproducao-f141e.firebasestorage.app",
-          messagingSenderId: "516590802933",
-          appId: "1:516590802933:web:756d1e76d981e51604b2bc",
-          measurementId: "G-3ZF5SLW87S"
+    return (
+        <div className="bg-white p-6 rounded-lg shadow-md">
+            <h3 className="text-lg font-semibold mb-4 text-gray-700">{title}</h3>
+            <div className="space-y-4">
+                {data.map(item => (
+                    <div 
+                        key={item.label} 
+                        className={`flex items-center group ${onBarClick ? 'cursor-pointer' : ''}`}
+                        onClick={() => onBarClick && onBarClick(item.label)}
+                    >
+                        <p className="w-1/4 text-sm text-gray-600 truncate pr-2 group-hover:text-blue-600">{item.label}</p>
+                        <div className="w-3/4 bg-gray-200 rounded-full h-6">
+                            <div
+                                className={`${barColorClass} h-6 rounded-full text-white text-xs flex items-center justify-end pr-2 group-hover:opacity-80 transition-opacity`}
+                                style={{ width: `${(maxValue > 0 ? (item.value / maxValue) * 100 : 0)}%` }}
+                            >
+                                {item.value.toFixed(2)}%
+                            </div>
+                        </div>
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
+};
+
+
+const ReasonTable = ({ data, title, total }) => {
+    if (!data || data.length === 0) {
+        return (
+            <div className="bg-white p-6 rounded-lg shadow-md">
+                <h3 className="text-lg font-semibold mb-4 text-gray-700">{title}</h3>
+                <p className="text-gray-500">Nenhum motivo registrado.</p>
+            </div>
+        );
+    }
+    
+    return (
+        <div className="bg-white p-6 rounded-lg shadow-md">
+            <h3 className="text-lg font-semibold mb-4 text-gray-700">{title}</h3>
+            <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200">
+                    <thead className="bg-gray-50">
+                        <tr>
+                            <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Motivo</th>
+                            <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Ocorrências</th>
+                            <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Percentual</th>
+                        </tr>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-200">
+                        {data.map(item => (
+                            <tr key={item.reason}>
+                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-800">{item.reason}</td>
+                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{item.count}</td>
+                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                    {total > 0 ? ((item.count / total) * 100).toFixed(2) : '0.00'}%
+                                </td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    );
+};
+
+const PercentageBar = ({ value, color = 'bg-gray-500' }) => (
+    <div className="w-full bg-gray-200 rounded-full h-5 relative">
+        <div
+            className={`${color} h-5 rounded-full`}
+            style={{ width: `${value.toFixed(2)}%` }}
+        />
+        <span className="absolute inset-0 flex items-center justify-center text-xs font-bold text-white px-2">
+            {value.toFixed(2)}%
+        </span>
+    </div>
+);
+
+const RegionDetailView = ({ region, data, onBack }) => {
+    if (!data || data.length === 0) {
+        return (
+            <div className="bg-white p-6 rounded-lg shadow-md col-span-1 lg:col-span-2">
+                <button onClick={onBack} className="mb-4 bg-blue-500 text-white font-bold py-2 px-4 rounded-md hover:bg-blue-600 transition-colors">
+                    &larr; Voltar
+                </button>
+                <h3 className="text-lg font-semibold mb-4 text-gray-700">Performance por Transportadora na Região: <span className="text-blue-600">{region}</span></h3>
+                <p className="text-gray-500">Nenhum dado de transportadora encontrado para esta região.</p>
+            </div>
+        )
+    }
+
+    return (
+        <div className="bg-white p-6 rounded-lg shadow-md col-span-1 lg:col-span-2">
+             <button onClick={onBack} className="mb-4 bg-blue-500 text-white font-bold py-2 px-4 rounded-md hover:bg-blue-600 transition-colors">
+                &larr; Voltar
+            </button>
+            <h3 className="text-lg font-semibold mb-4 text-gray-700">Performance por Transportadora na Região: <span className="text-blue-600">{region}</span></h3>
+            <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200">
+                    <thead className="bg-gray-50">
+                        <tr>
+                            <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Transportadora</th>
+                            <th scope="col" className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Entregas (Atraso/Total)</th>
+                            <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[120px]">OTIF %</th>
+                            <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[120px]">On-Time %</th>
+                            <th scope="col" className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[120px]">In-Full %</th>
+                        </tr>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-200">
+                        {data.map(item => (
+                            <tr key={item.label}>
+                                <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-800 font-medium">{item.label}</td>
+                                <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500 text-center">{item.delayCount} de {item.totalCount}</td>
+                                <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500"><PercentageBar value={item.otifPercentage} color="bg-blue-500" /></td>
+                                <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500"><PercentageBar value={item.onTimePercentage} color="bg-green-500" /></td>
+                                <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500"><PercentageBar value={item.inFullPercentage} color="bg-indigo-500" /></td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    )
+}
+
+// --- GESTÃO DA BASE DE DADOS INDEXEDDB ---
+const DB_NAME = 'otif-dashboard-db';
+const DB_VERSION = 1;
+const FILE_STORE = 'files';
+const DATA_STORE = 'data';
+
+const dbPromise = new Promise((resolve, reject) => {
+    const request = indexedDB.open(DB_NAME, DB_VERSION);
+    request.onerror = () => reject("Erro ao abrir a base de dados.");
+    request.onsuccess = () => resolve(request.result);
+    request.onupgradeneeded = event => {
+        const db = event.target.result;
+        if (!db.objectStoreNames.contains(FILE_STORE)) {
+            db.createObjectStore(FILE_STORE, { keyPath: 'name' });
+        }
+        if (!db.objectStoreNames.contains(DATA_STORE)) {
+            const dataStore = db.createObjectStore(DATA_STORE, { autoIncrement: true });
+            dataStore.createIndex('fileName', 'fileName', { unique: false });
+        }
+    };
+});
+
+// --- COMPONENTE PRINCIPAL ---
+export default function App() {
+    const [currentView, setCurrentView] = useState('dashboard');
+    const [data, setData] = useState([]);
+    const [loadedFiles, setLoadedFiles] = useState([]);
+    const [error, setError] = useState('');
+    const [isDragging, setIsDragging] = useState(false);
+    const [selectedRegion, setSelectedRegion] = useState(null);
+    const [selectedDateRange, setSelectedDateRange] = useState({ start: '', end: '' });
+    const [appliedDateRange, setAppliedDateRange] = useState({ start: '', end: '' });
+    const [confirmClear, setConfirmClear] = useState(false);
+    const [loadingMessage, setLoadingMessage] = useState('A carregar dados locais...');
+
+    useEffect(() => {
+        // Carrega o script do leitor de XLSX
+        const script = document.createElement('script');
+        script.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+        script.async = true;
+        document.body.appendChild(script);
+
+        // Carrega os dados do IndexedDB ao iniciar
+        const loadInitialData = async () => {
+            try {
+                const db = await dbPromise;
+                const fileTx = db.transaction(FILE_STORE, 'readonly');
+                const fileStore = fileTx.objectStore(FILE_STORE);
+                const filesReq = fileStore.getAll();
+
+                filesReq.onsuccess = () => {
+                    setLoadedFiles(filesReq.result);
+                };
+
+                const dataTx = db.transaction(DATA_STORE, 'readonly');
+                const dataStore = dataTx.objectStore(DATA_STORE);
+                const dataReq = dataStore.getAll();
+                
+                dataReq.onsuccess = () => {
+                    setData(dataReq.result);
+                    setLoadingMessage('');
+                };
+
+            } catch (err) {
+                setError("Não foi possível carregar os dados guardados.");
+                console.error(err);
+                setLoadingMessage('');
+            }
         };
-        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
 
-        // Função para exibir um aviso no modal customizado
-        function showAviso(message) {
-            avisoText.textContent = message;
-            avisoModal.classList.remove('hidden');
-        }
+        loadInitialData();
 
-        // Função utilitária para formatar o tempo em HH:MM:SS
-        function formatarTempo(ms) {
-            const segundos = Math.floor(ms / 1000);
-            const minutos = Math.floor(segundos / 60);
-            const horas = Math.floor(minutos / 60);
+        return () => {
+            document.body.removeChild(script);
+        };
+    }, []);
 
-            const s = segundos % 60;
-            const m = minutos % 60;
-            const h = horas % 24;
+    const handleDateChange = (e) => {
+        setSelectedDateRange(prev => ({ ...prev, [e.target.name]: e.target.value }));
+    };
+    
+    const applyDateFilter = () => {
+        setAppliedDateRange(selectedDateRange);
+        setSelectedRegion(null); 
+    };
 
-            return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
-        }
+    const clearDateFilter = () => {
+        setSelectedDateRange({ start: '', end: '' });
+        setAppliedDateRange({ start: '', end: '' });
+        setSelectedRegion(null);
+    };
+
+    const processFile = useCallback(async (file) => {
+        if (!file) return;
         
-        // Inicialização e Autenticação do Firebase
-        async function initializeFirebase() {
+        setError('');
+        if (loadedFiles.some(f => f.name === file.name)) {
+            setError(`O ficheiro "${file.name}" já foi importado.`);
+            return;
+        }
+
+        const reader = new FileReader();
+        const fileExtension = file.name.split('.').pop().toLowerCase();
+        
+        reader.onload = async (e) => {
             try {
-                const app = initializeApp(firebaseConfig);
-                auth = getAuth(app);
-                db = getFirestore(app);
-                
-                if (initialAuthToken) {
-                    await signInWithCustomToken(auth, initialAuthToken);
-                } else {
-                    await signInAnonymously(auth);
-                }
-                
-                onAuthStateChanged(auth, (user) => {
-                    if (user) {
-                        userId = user.uid;
-                        userIdDisplay.textContent = userId;
-                        setupRealtimeListener();
-                    } else {
-                        userIdDisplay.textContent = 'Não autenticado';
+                let rawData = [];
+                 if (fileExtension === 'csv') {
+                    const text = e.target.result;
+                    const lines = text.trim().split('\n');
+                    const headers = lines[0].split(',').map(h => h.trim().replace(/"/g, ''));
+                    rawData = lines.slice(1).map(line => {
+                        const values = line.split(',');
+                        return headers.reduce((obj, header, index) => {
+                            obj[header] = values[index] ? values[index].trim().replace(/"/g, '') : '';
+                            return obj;
+                        }, {});
+                    });
+                } else if (fileExtension === 'xlsx') {
+                    if (typeof XLSX === 'undefined') {
+                       setError('A biblioteca de leitura de planilhas (XLSX) não pôde ser carregada.');
+                       return;
                     }
-                });
-
-            } catch (error) {
-                console.error("Erro ao inicializar Firebase ou autenticar:", error);
-                showAviso("Erro ao conectar com o banco de dados. Por favor, tente novamente.");
-            }
-        }
-        
-        // Listener para o histórico de apontamentos
-        function setupRealtimeListener() {
-            if (!userId) return;
-            // Altera o caminho para um local público
-            const producoesRef = collection(db, `artifacts/${appId}/public/data/producoes`);
-            const q = query(producoesRef);
-            
-            onSnapshot(q, (snapshot) => {
-                historicoListaUl.innerHTML = '';
-                if (snapshot.empty) {
-                    historicoListaUl.innerHTML = '<li class="text-gray-500">Nenhum apontamento registrado ainda.</li>';
+                    const data = new Uint8Array(e.target.result);
+                    const workbook = XLSX.read(data, { type: 'array' });
+                    const sheetName = workbook.SheetNames[0];
+                    const worksheet = workbook.Sheets[sheetName];
+                    rawData = XLSX.utils.sheet_to_json(worksheet);
+                } else {
+                    setError('Formato de ficheiro não suportado. Use .csv ou .xlsx');
+                    return;
                 }
-                snapshot.forEach(doc => {
-                    const data = doc.data();
-                    const li = document.createElement('li');
-                    li.classList.add('p-4', 'bg-gray-100', 'rounded-lg', 'border', 'border-gray-200');
-                    li.innerHTML = `
-                        <p class="font-semibold text-gray-800">${data.responsavel} - ${data.codigoProduto}</p>
-                        <p class="text-sm text-gray-600"><strong>Quantidade:</strong> ${data.quantidade}</p>
-                        <p class="text-sm text-gray-600"><strong>Tempo Líquido:</strong> ${data.tempoLiquidoFormatado}</p>
-                        <p class="text-sm text-gray-600"><strong>Produtividade:</strong> ${data.produtividade.toFixed(2)} pçs/hora</p>
-                        <p class="text-xs italic text-gray-400">Finalizado em: ${data.dataFinalizacao.toDate().toLocaleString('pt-BR')}</p>
-                    `;
-                    historicoListaUl.appendChild(li);
-                });
-            });
-        }
-        
-        // Event listener para o botão de fechar o aviso
-        fecharAvisoBtn.addEventListener('click', () => {
-            avisoModal.classList.add('hidden');
-        });
-
-        // Event listener para o botão Iniciar Ordem
-        iniciarBtn.addEventListener('click', () => {
-            if (!responsavelInput.value || !codigoProdutoSelect.value || !quantidadeInput.value) {
-                showAviso("Por favor, preencha todos os campos antes de iniciar a ordem.");
-                return;
-            }
-
-            inicioProducao = new Date().getTime();
-            horaInicioSpan.textContent = new Date().toLocaleString('pt-BR');
-            pausasRegistradas = [];
-            tempoTotalPausas = 0;
-
-            iniciarBtn.disabled = true;
-            pausarBtn.disabled = false;
-            finalizarBtn.disabled = false;
-        });
-
-        // Event listener para o botão Pausar/Continuar
-        pausarBtn.addEventListener('click', () => {
-            if (!emPausa) {
-                justificativaModal.classList.remove('hidden');
-            } else {
-                const fimPausa = new Date().getTime();
-                const duracaoPausa = fimPausa - inicioPausa;
-                tempoTotalPausas += duracaoPausa;
                 
-                // Adiciona o tempo final da última pausa registrada
-                if(pausasRegistradas.length > 0) {
-                    pausasRegistradas[pausasRegistradas.length - 1].fimPausa = fimPausa;
-                }
-
-                emPausa = false;
-                pausarBtn.textContent = 'Pausar';
-                pausarBtn.classList.remove('bg-green-600', 'hover:bg-green-700');
-                pausarBtn.classList.add('bg-yellow-500', 'hover:bg-yellow-600');
-                
-                const lastPauseItem = listaPausasUl.lastElementChild;
-                if (lastPauseItem) {
-                    lastPauseItem.innerHTML += `<br><span class="text-sm italic text-gray-500">Retorno: ${new Date(fimPausa).toLocaleString('pt-BR')}</span>`;
-                }
-            }
-        });
-
-        // Event listener para o botão Salvar Justificativa (do modal)
-        salvarJustificativaBtn.addEventListener('click', () => {
-            const justificativa = justificativaInput.value;
-            if (justificativa.trim() === '') {
-                showAviso("A justificativa não pode estar vazia.");
-                return;
-            }
-
-            inicioPausa = new Date().getTime();
-            emPausa = true;
-            pausarBtn.textContent = 'Continuar';
-            pausarBtn.classList.remove('bg-yellow-500', 'hover:bg-yellow-600');
-            pausarBtn.classList.add('bg-green-600', 'hover:bg-green-700');
-
-            // Adiciona a pausa à lista local e visual
-            pausasRegistradas.push({ inicioPausa: inicioPausa, justificativa });
-            const li = document.createElement('li');
-            li.innerHTML = `Pausa: ${justificativa} - <span class="text-sm italic text-gray-500">Início: ${new Date(inicioPausa).toLocaleString('pt-BR')}</span>`;
-            listaPausasUl.appendChild(li);
-
-            justificativaInput.value = '';
-            justificativaModal.classList.add('hidden');
-        });
-
-        // Event listener para o botão Cancelar Justificativa (do modal)
-        cancelarJustificativaBtn.addEventListener('click', () => {
-            justificativaInput.value = '';
-            justificativaModal.classList.add('hidden');
-        });
-
-        // Event listener para o botão Finalizar Ordem
-        finalizarBtn.addEventListener('click', async () => {
-            if (!inicioProducao) {
-                showAviso("A ordem ainda não foi iniciada.");
-                return;
-            }
-            if (!userId) {
-                showAviso("Aguarde a autenticação do usuário antes de finalizar.");
-                return;
-            }
-
-            if (emPausa) {
-                const fimPausa = new Date().getTime();
-                const duracaoPausa = fimPausa - inicioPausa;
-                tempoTotalPausas += duracaoPausa;
-                emPausa = false;
-                if(pausasRegistradas.length > 0) {
-                    pausasRegistradas[pausasRegistradas.length - 1].fimPausa = fimPausa;
-                }
-            }
-
-            const fimProducao = new Date().getTime();
-            horaFimSpan.textContent = new Date(fimProducao).toLocaleString('pt-BR');
-
-            const tempoBruto = fimProducao - inicioProducao;
-            const tempoLiquido = tempoBruto - tempoTotalPausas;
-            const tempoLiquidoFormatado = formatarTempo(tempoLiquido);
-            tempoLiquidoSpan.textContent = tempoLiquidoFormatado;
-
-            const quantidade = parseFloat(quantidadeInput.value);
-            const tempoLiquidoEmHoras = tempoLiquido / (1000 * 60 * 60);
-            const produtividade = tempoLiquidoEmHoras > 0 ? quantidade / tempoLiquidoEmHoras : 0;
-            produtividadeSpan.textContent = `${produtividade.toFixed(2)} peças/hora`;
-
-            const producaoData = {
-                responsavel: responsavelInput.value,
-                codigoProduto: codigoProdutoSelect.value,
-                quantidade: quantidade,
-                dataInicio: Timestamp.fromMillis(inicioProducao),
-                dataFim: Timestamp.fromMillis(fimProducao),
-                tempoLiquidoMs: tempoLiquido,
-                tempoLiquidoFormatado: tempoLiquidoFormatado,
-                produtividade: produtividade,
-                pausas: pausasRegistradas.map(p => ({
-                    justificativa: p.justificativa,
-                    inicioPausa: Timestamp.fromMillis(p.inicioPausa),
-                    fimPausa: p.fimPausa ? Timestamp.fromMillis(p.fimPausa) : null,
-                })),
-                dataFinalizacao: Timestamp.now()
-            };
-
-            try {
-                // Altera o caminho para um local público
-                const docRef = await addDoc(collection(db, `artifacts/${appId}/public/data/producoes`), producaoData);
-                console.log("Documento escrito com ID: ", docRef.id);
-            } catch (e) {
-                console.error("Erro ao adicionar documento: ", e);
-                showAviso("Erro ao salvar os dados. Verifique a conexão.");
-            }
-
-            iniciarBtn.disabled = false;
-            pausarBtn.disabled = true;
-            finalizarBtn.disabled = true;
-            pausarBtn.textContent = 'Pausar';
-            pausarBtn.classList.remove('bg-green-600', 'hover:bg-green-700');
-            pausarBtn.classList.add('bg-yellow-500', 'hover:bg-yellow-600');
-            
-            inicioProducao = null;
-            inicioPausa = null;
-            tempoTotalPausas = 0;
-            emPausa = false;
-            pausasRegistradas = [];
-
-            responsavelInput.value = '';
-            codigoProdutoSelect.value = '';
-            quantidadeInput.value = '';
-            listaPausasUl.innerHTML = '';
-        });
-        
-        // Event listener para o botão de exportar
-        exportarBtn.addEventListener('click', async () => {
-            if (!userId) {
-                showAviso("Aguarde a autenticação do usuário para exportar os dados.");
-                return;
-            }
-            
-            try {
-                // Altera o caminho para um local público
-                const producoesRef = collection(db, `artifacts/${appId}/public/data/producoes`);
-                const snapshot = await getDocs(producoesRef);
-                
-                if (snapshot.empty) {
-                    showAviso("Não há dados para exportar.");
+                if(rawData.length > 0 && !rawData[0]['Data Pedido']){
+                    setError("A coluna 'Data Pedido' é necessária e não foi encontrada.");
                     return;
                 }
 
-                // Cria o cabeçalho dinâmico para as pausas
-                let maxPausas = 0;
-                snapshot.forEach(doc => {
-                    const data = doc.data();
-                    if (data.pausas && data.pausas.length > maxPausas) {
-                        maxPausas = data.pausas.length;
-                    }
-                });
+                setLoadingMessage(`A guardar ${rawData.length.toLocaleString('pt-BR')} linhas...`);
 
-                let csvHeader = 'Responsavel,Codigo do Produto,Quantidade,Data de Inicio,Hora de Inicio,Data de Fim,Hora de Fim,Tempo Liquido,Produtividade';
-                for (let i = 1; i <= maxPausas; i++) {
-                    csvHeader += `,Pausa ${i} Motivo,Pausa ${i} Duracao`;
-                }
-                csvHeader += '\n';
+                const db = await dbPromise;
+                const dataTx = db.transaction(DATA_STORE, 'readwrite');
+                const dataStore = dataTx.objectStore(DATA_STORE);
 
-                let csvBody = '';
-                
-                snapshot.forEach(doc => {
-                    const data = doc.data();
-                    
-                    const dataInicio = data.dataInicio.toDate();
-                    const dataInicioStr = dataInicio.toLocaleDateString('pt-BR');
-                    const horaInicioStr = dataInicio.toLocaleTimeString('pt-BR');
-                    
-                    const dataFim = data.dataFim.toDate();
-                    const dataFimStr = dataFim.toLocaleDateString('pt-BR');
-                    const horaFimStr = dataFim.toLocaleTimeString('pt-BR');
-
-                    let pausasData = [];
-                    data.pausas.forEach(p => {
-                        const inicio = p.inicioPausa.toDate();
-                        const fim = p.fimPausa ? p.fimPausa.toDate() : data.dataFim.toDate();
-                        const duracao = formatarTempo(fim - inicio);
-                        // Garante que as strings com vírgulas ou aspas sejam encapsuladas
-                        pausasData.push(`"${p.justificativa.replace(/"/g, '""')}"`, `"${duracao}"`);
-                    });
-
-                    // Preenche com colunas vazias se houver menos pausas que o máximo
-                    while(pausasData.length < maxPausas * 2) {
-                        pausasData.push('', '');
-                    }
-                    
-                    csvBody += `"${data.responsavel.replace(/"/g, '""')}","${data.codigoProduto.replace(/"/g, '""')}",${data.quantidade},"${dataInicioStr}","${horaInicioStr}","${dataFimStr}","${horaFimStr}","${data.tempoLiquidoFormatado}",${data.produtividade.toFixed(2)},${pausasData.join(',')}\n`;
+                rawData.forEach(row => {
+                    dataStore.add({ ...row, fileName: file.name });
                 });
                 
-                const blob = new Blob([csvHeader + csvBody], { type: 'text/csv;charset=utf-8;' });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.setAttribute('href', url);
-                a.setAttribute('download', 'historico_apontamentos.csv');
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
-                URL.revokeObjectURL(url);
+                await new Promise(resolve => dataTx.oncomplete = resolve);
+
+                const fileTx = db.transaction(FILE_STORE, 'readwrite');
+                const fileStore = fileTx.objectStore(FILE_STORE);
+                fileStore.add({ name: file.name, uploadDate: new Date().toISOString() });
                 
-                showAviso("Histórico exportado com sucesso!");
+                await new Promise(resolve => fileTx.oncomplete = resolve);
                 
-            } catch (error) {
-                console.error("Erro ao exportar dados:", error);
-                showAviso("Erro ao exportar dados. Tente novamente.");
+                // Atualiza o estado
+                setData(prev => [...prev, ...rawData.map(r => ({...r, fileName: file.name}))]);
+                setLoadedFiles(prev => [...prev, { name: file.name, uploadDate: new Date().toISOString() }]);
+
+                setCurrentView('dashboard');
+            } catch (err) {
+                 setError('Ocorreu um erro ao processar o ficheiro.');
+                 console.error(err);
+            } finally {
+                setLoadingMessage('');
             }
+        };
+
+        reader.onerror = () => {
+            setError('Não foi possível ler o ficheiro.');
+        }
+
+        if (fileExtension === 'csv') reader.readAsText(file, 'UTF-8');
+        else if (fileExtension === 'xlsx') reader.readAsArrayBuffer(file);
+        else setError('Formato de ficheiro não suportado.');
+
+    }, [loadedFiles]);
+
+    const handleFileChange = (e) => processFile(e.target.files[0]);
+    const handleDragEvents = (e, over) => { e.preventDefault(); e.stopPropagation(); setIsDragging(over); };
+    const handleDrop = (e) => {
+        handleDragEvents(e, false);
+        if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+            processFile(e.dataTransfer.files[0]);
+        }
+    };
+    
+    const removeFile = async (fileNameToRemove) => {
+        try {
+            setLoadingMessage(`A remover o ficheiro ${fileNameToRemove}...`);
+            const db = await dbPromise;
+            
+            // Remove os dados
+            const dataTx = db.transaction(DATA_STORE, 'readwrite');
+            const dataStore = dataTx.objectStore(DATA_STORE);
+            const dataIndex = dataStore.index('fileName');
+            const request = dataIndex.openCursor(IDBKeyRange.only(fileNameToRemove));
+            
+            request.onsuccess = event => {
+                const cursor = event.target.result;
+                if(cursor){
+                    cursor.delete();
+                    cursor.continue();
+                }
+            };
+            await new Promise(resolve => dataTx.oncomplete = resolve);
+
+            // Remove o registo do ficheiro
+            const fileTx = db.transaction(FILE_STORE, 'readwrite');
+            fileTx.objectStore(FILE_STORE).delete(fileNameToRemove);
+            await new Promise(resolve => fileTx.oncomplete = resolve);
+
+            // Atualiza o estado
+            setData(prev => prev.filter(row => row.fileName !== fileNameToRemove));
+            setLoadedFiles(prev => prev.filter(file => file.name !== fileNameToRemove));
+
+        } catch (e) {
+            setError("Erro ao remover o ficheiro.");
+            console.error(e);
+        } finally {
+            setLoadingMessage('');
+        }
+    };
+
+    const clearAllData = async () => {
+        if (!confirmClear) {
+            setConfirmClear(true);
+            setTimeout(() => setConfirmClear(false), 3000);
+            return;
+        }
+        try {
+            setLoadingMessage('A limpar todo o histórico...');
+            const db = await dbPromise;
+            
+            const dataTx = db.transaction(DATA_STORE, 'readwrite');
+            dataTx.objectStore(DATA_STORE).clear();
+            await new Promise(resolve => dataTx.oncomplete = resolve);
+            
+            const fileTx = db.transaction(FILE_STORE, 'readwrite');
+            fileTx.objectStore(FILE_STORE).clear();
+            await new Promise(resolve => fileTx.oncomplete = resolve);
+
+            setData([]);
+            setLoadedFiles([]);
+            setConfirmClear(false);
+        } catch (e) {
+            setError("Erro ao limpar o histórico.");
+            console.error(e);
+        } finally {
+            setLoadingMessage('');
+        }
+    };
+
+    const metrics = useMemo(() => {
+        if (data.length === 0) return null;
+
+        const filteredData = data.filter(row => {
+            const rowDateStr = row['Data Pedido'];
+            if (!rowDateStr) return false; 
+            
+            let rowDate;
+            if (typeof rowDateStr === 'number') {
+                const excelEpoch = new Date(1899, 11, 30);
+                rowDate = new Date(excelEpoch.getTime() + rowDateStr * 86400000);
+            } else if (String(rowDateStr).includes('/')) {
+                const parts = rowDateStr.split('/');
+                rowDate = new Date(`${parts[2]}-${parts[1]}-${parts[0]}T00:00:00`);
+            }
+             else { 
+                 rowDate = new Date(rowDateStr + 'T00:00:00');
+            }
+
+            if(isNaN(rowDate.getTime())) return false; 
+
+            const startDate = appliedDateRange.start ? new Date(appliedDateRange.start + 'T00:00:00') : null;
+            const endDate = appliedDateRange.end ? new Date(appliedDateRange.end + 'T23:59:59') : null;
+
+            if (startDate && rowDate < startDate) return false;
+            if (endDate && rowDate > endDate) return false;
+            
+            return true;
         });
+
+        const processedData = filteredData.map(row => {
+            const isOnTime = row['Status Entrega'] !== 'Fora do Prazo';
+            const isInFull = !row['Entrega divergente?'] || String(row['Entrega divergente?']).toLowerCase() !== 'sim';
+            return { ...row, isOnTime, isInFull };
+        });
+
+        const totalDeliveries = filteredData.length;
+        const otifCount = processedData.filter(d => d.isOnTime && d.isInFull).length;
+        const onTimeCount = processedData.filter(d => d.isOnTime).length;
+        const inFullCount = processedData.filter(d => d.isInFull).length;
         
-        // Inicia a aplicação
-        initializeFirebase();
-    </script>
-</body>
-</html>
+        const otifRate = totalDeliveries > 0 ? (otifCount / totalDeliveries) * 100 : 0;
+        const onTimeRate = totalDeliveries > 0 ? (onTimeCount / totalDeliveries) * 100 : 0;
+        const inFullRate = totalDeliveries > 0 ? (inFullCount / totalDeliveries) * 100 : 0;
+
+        const byCarrier = processedData.reduce((acc, curr) => {
+            const carrier = curr['TRANSPORTADORA'];
+            if (!carrier) return acc;
+            if (!acc[carrier]) acc[carrier] = { total: 0, otif: 0 };
+            acc[carrier].total++;
+            if (curr.isOnTime && curr.isInFull) acc[carrier].otif++;
+            return acc;
+        }, {});
+        const carrierPerformance = Object.entries(byCarrier).map(([label, values]) => ({
+            label, value: (values.otif / values.total) * 100
+        })).sort((a, b) => b.value - a.value);
+
+        const byRegion = processedData.reduce((acc, curr) => {
+            const region = curr['Região'];
+            if (!region) return acc;
+            if (!acc[region]) acc[region] = { total: 0, otif: 0 };
+            acc[region].total++;
+            if (curr.isOnTime && curr.isInFull) acc[region].otif++;
+            return acc;
+        }, {});
+        const regionPerformance = Object.entries(byRegion).map(([label, values]) => ({
+            label, value: (values.otif / values.total) * 100
+        })).sort((a, b) => b.value - a.value);
+
+        const delayReasons = processedData.filter(row => !row.isOnTime && row['Motivos']).reduce((acc, curr) => {
+            const reason = curr['Motivos'];
+            acc[reason] = (acc[reason] || 0) + 1;
+            return acc;
+        }, {});
+        const topDelayReasons = Object.entries(delayReasons).map(([reason, count]) => ({ reason, count })).sort((a, b) => b.count - a.count);
+        
+        const discrepancyReasons = processedData.filter(row => !row.isInFull && row['Divergência']).reduce((acc, curr) => {
+            const reason = curr['Divergência'];
+            acc[reason] = (acc[reason] || 0) + 1;
+            return acc;
+        }, {});
+        const topDiscrepancyReasons = Object.entries(discrepancyReasons).map(([reason, count]) => ({ reason, count })).sort((a, b) => b.count - a.count);
+        
+        const carrierPerformanceByRegion = processedData.reduce((acc, curr) => {
+            const region = curr['Região'];
+            const carrier = curr['TRANSPORTADORA'];
+            if (!region || !carrier) return acc;
+            if (!acc[region]) acc[region] = {};
+            if (!acc[region][carrier]) acc[region][carrier] = { totalCount: 0, onTimeCount: 0, inFullCount: 0, otifCount: 0 };
+            acc[region][carrier].totalCount++;
+            if (curr.isOnTime) acc[region][carrier].onTimeCount++;
+            if (curr.isInFull) acc[region][carrier].inFullCount++;
+            if (curr.isOnTime && curr.isInFull) acc[region][carrier].otifCount++;
+            return acc;
+        }, {});
+
+        Object.keys(carrierPerformanceByRegion).forEach(region => {
+            carrierPerformanceByRegion[region] = Object.entries(carrierPerformanceByRegion[region])
+                .map(([carrierLabel, counts]) => ({
+                    label: carrierLabel,
+                    totalCount: counts.totalCount,
+                    delayCount: counts.totalCount - counts.onTimeCount,
+                    otifPercentage: counts.totalCount > 0 ? (counts.otifCount / counts.totalCount) * 100 : 0,
+                    onTimePercentage: counts.totalCount > 0 ? (counts.onTimeCount / counts.totalCount) * 100 : 0,
+                    inFullPercentage: counts.totalCount > 0 ? (counts.inFullCount / counts.totalCount) * 100 : 0
+                }))
+                .sort((a, b) => a.otifPercentage - b.otifPercentage);
+        });
+
+        return { 
+            totalDeliveries, otifRate, onTimeRate, inFullRate, carrierPerformance, regionPerformance, 
+            topDelayReasons, totalCategorizedDelays: onTimeCount,
+            topDiscrepancyReasons, totalCategorizedDiscrepancies: inFullCount, 
+            carrierPerformanceByRegion
+        };
+    }, [data, appliedDateRange]);
+    
+    const renderImportView = () => (
+         <div className="flex flex-col items-center justify-center p-4 gap-8">
+            <div 
+                className={`w-full max-w-2xl p-8 text-center bg-white rounded-lg shadow-lg border-2 border-dashed ${isDragging ? 'border-blue-500 bg-blue-50' : 'border-gray-300'}`}
+                onDragOver={(e) => handleDragEvents(e, true)} onDragLeave={(e) => handleDragEvents(e, false)} onDrop={handleDrop}
+            >
+                <svg className="mx-auto h-12 w-12 text-gray-400" stroke="currentColor" fill="none" viewBox="0 0 48 48" aria-hidden="true"><path d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 01-4 4H12a4 4 0 01-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28m0 0l4 4m4-24h8m-4-4v8" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                <h2 className="mt-4 text-2xl font-bold text-gray-800">Importar Novo Ficheiro</h2>
+                <p className="mt-2 text-sm text-gray-500">Arraste e solte um ficheiro .csv ou .xlsx aqui.</p>
+                <div className="mt-6">
+                    <input type="file" id="file-upload" className="hidden" accept=".csv, .xlsx" onChange={handleFileChange} />
+                    <label htmlFor="file-upload" className="cursor-pointer bg-blue-500 text-white font-bold py-2 px-4 rounded-md hover:bg-blue-600 transition-colors">
+                        Ou Selecione um Ficheiro
+                    </label>
+                </div>
+                 {error && <p className="mt-4 text-sm text-red-600">{error}</p>}
+            </div>
+            <div className="w-full max-w-2xl p-8 bg-white rounded-lg shadow-lg">
+                <h3 className="text-xl font-bold text-gray-800 mb-4">Ficheiros Carregados</h3>
+                {loadedFiles.length > 0 ? (
+                    <ul className="space-y-3">
+                        {loadedFiles.map(file => (
+                            <li key={file.name} className="flex justify-between items-center bg-gray-50 p-3 rounded-md">
+                                <span className="text-gray-700 truncate pr-4">{file.name}</span>
+                                <button onClick={() => removeFile(file.name)} className="text-red-500 hover:text-red-700 font-semibold flex-shrink-0">Remover</button>
+                            </li>
+                        ))}
+                    </ul>
+                ) : (
+                    <p className="text-gray-500">Nenhum ficheiro foi carregado ainda.</p>
+                )}
+                 <div className="mt-6 border-t pt-6">
+                    <button onClick={clearAllData} className={`w-full font-bold py-2 px-4 rounded-md transition-colors ${confirmClear ? 'bg-red-700 text-white' : 'bg-red-500 text-white hover:bg-red-600'}`}>
+                        {confirmClear ? 'Tem a certeza? Clique para confirmar' : 'Limpar Todo o Histórico'}
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+    
+    const renderDashboardView = () => {
+        if (data.length === 0 && loadingMessage) {
+            return null; // Don't show "welcome" message while initially loading
+        }
+
+        if (data.length === 0) {
+            return (
+                 <div className="text-center bg-white p-8 rounded-lg shadow-md">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="mx-auto h-16 w-16 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V7a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+                    <h2 className="mt-4 text-2xl font-bold text-gray-800 mb-4">Bem-vindo ao Dashboard OTIF</h2>
+                    <p className="text-gray-600 mb-6">Nenhum dado foi carregado. Por favor, vá à aba "Importar Arquivo" para começar.</p>
+                    <button onClick={() => setCurrentView('import')} className="bg-blue-500 text-white font-bold py-2 px-6 rounded-md hover:bg-blue-600 transition-colors">
+                        Importar Arquivo
+                    </button>
+                </div>
+            );
+        }
+        
+        return (
+            <>
+                 <header className="mb-8">
+                    <div className="flex flex-wrap justify-between items-start gap-4 mb-6">
+                        <div>
+                            <h2 className="text-2xl font-bold text-gray-800">Resumo da Performance</h2>
+                            <p className="text-gray-600">Analisando {loadedFiles.length} ficheiro(s) com {data.length.toLocaleString('pt-BR')} linhas.</p>
+                        </div>
+                    </div>
+                    <div className="bg-white p-4 rounded-lg shadow-md flex flex-wrap items-center gap-4">
+                        <span className="font-semibold text-gray-700">Filtrar por Período:</span>
+                        <div>
+                            <label htmlFor="start" className="text-sm text-gray-600 mr-2">De:</label>
+                            <input type="date" name="start" id="start" value={selectedDateRange.start} onChange={handleDateChange} className="border-gray-300 rounded-md shadow-sm p-2" />
+                        </div>
+                        <div>
+                           <label htmlFor="end" className="text-sm text-gray-600 mr-2">Até:</label>
+                           <input type="date" name="end" id="end" value={selectedDateRange.end} onChange={handleDateChange} className="border-gray-300 rounded-md shadow-sm p-2" />
+                        </div>
+                        <button onClick={applyDateFilter} className="bg-blue-500 text-white font-bold py-2 px-4 rounded-md hover:bg-blue-600 transition-colors">Aplicar</button>
+                        <button onClick={clearDateFilter} className="bg-gray-300 text-gray-800 font-bold py-2 px-4 rounded-md hover:bg-gray-400 transition-colors">Limpar Filtro</button>
+                    </div>
+                </header>
+                
+                {!metrics || metrics.totalDeliveries === 0 ? (
+                    <div className="bg-white p-6 rounded-lg shadow-md text-center">
+                         <h3 className="text-lg font-semibold mb-4 text-gray-700">Nenhum dado encontrado</h3>
+                         <p className="text-gray-500">Não há registos que correspondam ao período selecionado.</p>
+                    </div>
+                ) : selectedRegion ? (
+                     <RegionDetailView region={selectedRegion} data={metrics.carrierPerformanceByRegion[selectedRegion]} onBack={() => setSelectedRegion(null)} />
+                ) : (
+                    <>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+                            <StatCard title="OTIF Geral" value={`${metrics.otifRate.toFixed(2)}%`} color="bg-blue-100 text-blue-600" icon={<svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>} />
+                            <StatCard title="On-Time (No Prazo)" value={`${metrics.onTimeRate.toFixed(2)}%`} color="bg-green-100 text-green-600" icon={<svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>} />
+                            <StatCard title="In-Full (Sem Divergência)" value={`${metrics.inFullRate.toFixed(2)}%`} color="bg-indigo-100 text-indigo-600" icon={<svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" /></svg>} />
+                            <StatCard title="Total de Linhas" value={metrics.totalDeliveries.toLocaleString('pt-BR')} color="bg-gray-200 text-gray-700" icon={<svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2H5a2 2 0 00-2 2v2m14 0h-2" /></svg>} />
+                        </div>
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+                            <BarChart data={metrics.carrierPerformance} title="Performance OTIF por Transportadora" barColorClass="bg-blue-500" />
+                            <BarChart data={metrics.regionPerformance} title="Performance OTIF por Região (Clique para detalhar)" barColorClass="bg-teal-500" onBarClick={setSelectedRegion}/>
+                        </div>
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                            <ReasonTable data={metrics.topDelayReasons} title="Principais Motivos de Atraso" total={metrics.totalDeliveries - metrics.totalCategorizedDelays} />
+                            <ReasonTable data={metrics.topDiscrepancyReasons} title="Principais Motivos de Divergência" total={metrics.totalDeliveries - metrics.totalCategorizedDiscrepancies} />
+                        </div>
+                    </>
+                )}
+            </>
+        );
+    };
+
+    return (
+        <div className="bg-gray-100 min-h-screen font-sans">
+            {loadingMessage && <LoadingOverlay message={loadingMessage} />}
+            <header className="bg-white shadow-md sticky top-0 z-10">
+                <div className="container mx-auto flex items-center justify-between p-4">
+                     <h1 className="text-2xl font-bold text-gray-800">Análise OTIF</h1>
+                     <nav>
+                        <button onClick={() => setCurrentView('dashboard')} className={`py-2 px-4 font-semibold rounded-md transition-colors ${currentView === 'dashboard' ? 'bg-blue-500 text-white' : 'text-gray-600 hover:bg-gray-200'}`}>
+                            Dashboard
+                        </button>
+                        <button onClick={() => setCurrentView('import')} className={`ml-4 py-2 px-4 font-semibold rounded-md transition-colors ${currentView === 'import' ? 'bg-blue-500 text-white' : 'text-gray-600 hover:bg-gray-200'}`}>
+                            Importar Arquivo
+                        </button>
+                     </nav>
+                </div>
+            </header>
+            <main className="container mx-auto p-4 sm:p-6 lg:p-8">
+                {currentView === 'import' && renderImportView()}
+                {currentView === 'dashboard' && renderDashboardView()}
+            </main>
+        </div>
+    );
+}
+
