@@ -199,11 +199,20 @@ export default function App() {
     const [loadingMessage, setLoadingMessage] = useState('A carregar dados locais...');
 
     useEffect(() => {
+        // Adiciona o script do Tailwind CSS para garantir que a estilização funcione em qualquer ambiente
+        const tailwindScriptId = 'tailwind-cdn-script';
+        if (!document.getElementById(tailwindScriptId)) {
+            const tailwindScript = document.createElement('script');
+            tailwindScript.id = tailwindScriptId;
+            tailwindScript.src = 'https://cdn.tailwindcss.com';
+            document.head.appendChild(tailwindScript);
+        }
+
         // Carrega o script do leitor de XLSX
-        const script = document.createElement('script');
-        script.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
-        script.async = true;
-        document.body.appendChild(script);
+        const xlsxScript = document.createElement('script');
+        xlsxScript.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+        xlsxScript.async = true;
+        document.body.appendChild(xlsxScript);
 
         // Carrega os dados do IndexedDB ao iniciar
         const loadInitialData = async () => {
@@ -236,7 +245,7 @@ export default function App() {
         loadInitialData();
 
         return () => {
-            document.body.removeChild(script);
+            document.body.removeChild(xlsxScript);
         };
     }, []);
 
