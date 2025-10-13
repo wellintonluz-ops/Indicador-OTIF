@@ -196,26 +196,36 @@ export default function App() {
     const [selectedDateRange, setSelectedDateRange] = useState({ start: '', end: '' });
     const [appliedDateRange, setAppliedDateRange] = useState({ start: '', end: '' });
     const [confirmClear, setConfirmClear] = useState(false);
-    const [loadingMessage, setLoadingMessage] = useState('A carregar dados locais...');
+    const [loadingMessage, setLoadingMessage] = useState('A carregar interface...');
+    const [stylesLoaded, setStylesLoaded] = useState(false);
 
     useEffect(() => {
-        // Adiciona o script do Tailwind CSS para garantir que a estilização funcione em qualquer ambiente
+        // Adiciona o script do Tailwind CSS e aguarda o seu carregamento
         const tailwindScriptId = 'tailwind-cdn-script';
         if (!document.getElementById(tailwindScriptId)) {
             const tailwindScript = document.createElement('script');
             tailwindScript.id = tailwindScriptId;
             tailwindScript.src = 'https://cdn.tailwindcss.com';
+            tailwindScript.onload = () => setStylesLoaded(true);
+            tailwindScript.onerror = () => {
+                setError("Não foi possível carregar os estilos. O layout pode estar quebrado.");
+                setStylesLoaded(true); // Permite que a aplicação continue, mesmo com erro de estilo
+            };
             document.head.appendChild(tailwindScript);
+        } else {
+            setStylesLoaded(true);
         }
 
         // Carrega o script do leitor de XLSX
         const xlsxScript = document.createElement('script');
-        xlsxScript.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+        const xlsxSrc = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+        xlsxScript.src = xlsxSrc;
         xlsxScript.async = true;
         document.body.appendChild(xlsxScript);
 
         // Carrega os dados do IndexedDB ao iniciar
         const loadInitialData = async () => {
+            setLoadingMessage('A carregar dados locais...');
             try {
                 const db = await dbPromise;
                 const fileTx = db.transaction(FILE_STORE, 'readonly');
@@ -245,7 +255,10 @@ export default function App() {
         loadInitialData();
 
         return () => {
-            document.body.removeChild(xlsxScript);
+            const scriptElement = document.querySelector(`script[src="${xlsxSrc}"]`);
+            if (scriptElement) {
+                document.body.removeChild(scriptElement);
+            }
         };
     }, []);
 
@@ -653,6 +666,10 @@ export default function App() {
             </>
         );
     };
+
+    if (!stylesLoaded) {
+        return <LoadingOverlay message="A carregar interface..." />;
+    }
 
     return (
         <div className="bg-gray-100 min-h-screen font-sans">
