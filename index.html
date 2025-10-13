@@ -472,10 +472,10 @@
 
                 if (item.value !== undefined) {
                      html += `
-                        <div class="absolute text-center w-full text-xs font-bold text-gray-800" style="bottom: calc(${item.value}% + 4px);">
+                        <div class="absolute text-center w-full text-xs font-bold text-gray-800" style="bottom: calc(${(item.value / 1.5)}% + 4px);">
                            ${item.value.toFixed(1)}%
                         </div>
-                        <div class="${getOtifColorClass(item.value)} w-3/4" style="height: ${item.value}%;"></div>`;
+                        <div class="${getOtifColorClass(item.value)} w-3/4" style="height: ${(item.value / 1.5)}%;"></div>`;
                 }
                 
                 html += `</div>`;
@@ -499,11 +499,12 @@
         };
 
         const renderSingleMetricChart = (monthlyData, title, metricKey, year) => {
-            if (!monthlyData || monthlyData.length === 0) {
-                return '';
-            }
-
             const months = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+            const visibleData = monthlyData.filter(m => m.totalCount > 0);
+
+            if (!visibleData || visibleData.length === 0) {
+                 return `<div class="bg-white p-6 rounded-lg shadow-md"><h3 class="text-lg font-semibold mb-4 text-gray-700">${title} (${year})</h3><p class="text-gray-500">Nenhum dado para exibir.</p></div>`;
+            }
             
             let html = `
                 <div class="bg-white p-6 rounded-lg shadow-md">
@@ -516,17 +517,17 @@
                             <span>25%</span>
                             <span>0%</span>
                         </div>
-                        <div class="flex-1 grid grid-cols-12 pl-2 border-b border-gray-200">`;
+                        <div class="flex-1 grid pl-2 border-b border-gray-200" style="grid-template-columns: repeat(${visibleData.length}, minmax(0, 1fr));">`;
 
-            monthlyData.forEach(monthData => {
+            visibleData.forEach(monthData => {
                 const value = monthData[metricKey];
                 html += `<div class="relative flex justify-center items-end h-full px-1 group">`;
                 if (value !== undefined) {
                      html += `
-                        <div class="absolute text-center w-full text-xs font-bold text-gray-800" style="bottom: calc(${value}% + 4px);">
+                        <div class="absolute text-center w-full text-xs font-bold text-gray-800" style="bottom: calc(${(value / 1.5)}% + 4px);">
                            ${value.toFixed(1)}%
                         </div>
-                        <div class="${getOtifColorClass(value)} w-3/4" style="height: ${value}%;"></div>`;
+                        <div class="${getOtifColorClass(value)} w-3/4" style="height: ${(value / 1.5)}%;"></div>`;
                 }
                 html += `</div>`;
             });
@@ -535,8 +536,8 @@
             
             // Eixo X
             html += `<div class="flex pl-10 pt-2">
-                        <div class="grid grid-cols-12 w-full">
-                            ${months.map(m => `<div class="text-center text-xs text-gray-500">${m}</div>`).join('')}
+                        <div class="grid w-full" style="grid-template-columns: repeat(${visibleData.length}, minmax(0, 1fr));">
+                            ${visibleData.map(m => `<div class="text-center text-xs text-gray-500">${months[new Date(m.month + '-02').getMonth()]}</div>`).join('')}
                         </div>
                      </div>`;
 
@@ -709,13 +710,15 @@
                         otifRate: (data.otifCount / data.total) * 100,
                         onTimeRate: (data.onTimeCount / data.total) * 100,
                         inFullRate: (data.inFullCount / data.total) * 100,
+                        totalCount: data.total
                     };
                 }
                 return {
                     month: monthKey,
-                    otifRate: 0,
-                    onTimeRate: 0,
-                    inFullRate: 0,
+                    otifRate: undefined,
+                    onTimeRate: undefined,
+                    inFullRate: undefined,
+                    totalCount: 0
                 };
             });
 
