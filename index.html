@@ -564,7 +564,7 @@
             // Eixo X
             html += `<div class="flex pl-10 pt-2">
                         <div class="grid w-full" style="grid-template-columns: repeat(${visibleData.length}, minmax(0, 1fr));">
-                            ${visibleData.map(m => `<div class="text-center text-xs text-gray-500">${months[new Date(m.month + '-02').getMonth()]}</div>`).join('')}
+                            ${visibleData.map(m => `<div class="text-center text-xs text-gray-500"><div>${months[new Date(m.month + '-02').getMonth()]}</div><div class="text-gray-400">(${m.totalCount})</div></div>`).join('')}
                         </div>
                      </div>`;
 
