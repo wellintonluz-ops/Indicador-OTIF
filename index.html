@@ -58,7 +58,7 @@
                     </div>
                      <p id="import-error" class="mt-4 text-sm text-red-600"></p>
                 </div>
-                <div class="w-full max-w-2xl p-8 bg-white rounded-lg shadow-lg">
+                <div id="history-section" class="w-full max-w-2xl p-8 bg-white rounded-lg shadow-lg">
                     <h3 class="text-xl font-bold text-gray-800 mb-4">Ficheiros Carregados</h3>
                     <ul id="loaded-files-list" class="space-y-3">
                        <!-- A lista de ficheiros será inserida aqui -->
@@ -98,6 +98,7 @@
         let selectedCarrier = null;
         let selectedReason = null; // { reason: '...', type: 'delay' | 'discrepancy' }
         let isDbAvailable = true;
+        let dbPromise;
 
         // --- ELEMENTOS DO DOM ---
         const loadingOverlay = document.getElementById('loading-overlay');
@@ -111,31 +112,35 @@
         const importError = document.getElementById('import-error');
         const loadedFilesList = document.getElementById('loaded-files-list');
         const clearHistoryBtn = document.getElementById('clear-history-btn');
+        const historySection = document.getElementById('history-section');
 
         // --- BASE DE DADOS INDEXEDDB ---
-        const dbPromise = new Promise((resolve, reject) => {
-            try {
-                const request = indexedDB.open(DB_NAME, DB_VERSION);
-                request.onerror = (event) => {
-                    console.error("Erro ao abrir IndexedDB:", event.target.error);
-                    reject(event.target.error);
-                };
-                request.onsuccess = () => resolve(request.result);
-                request.onupgradeneeded = event => {
-                    const db = event.target.result;
-                    if (!db.objectStoreNames.contains(FILE_STORE)) {
-                        db.createObjectStore(FILE_STORE, { keyPath: 'name' });
-                    }
-                    if (!db.objectStoreNames.contains(DATA_STORE)) {
-                        const dataStore = db.createObjectStore(DATA_STORE, { autoIncrement: true });
-                        dataStore.createIndex('fileName', 'fileName', { unique: false });
-                    }
-                };
+        const initDb = () => {
+             try {
+                dbPromise = new Promise((resolve, reject) => {
+                    const request = indexedDB.open(DB_NAME, DB_VERSION);
+                    request.onerror = (event) => {
+                        console.error("Erro ao abrir IndexedDB:", event.target.error);
+                        reject(event.target.error);
+                    };
+                    request.onsuccess = () => resolve(request.result);
+                    request.onupgradeneeded = event => {
+                        const db = event.target.result;
+                        if (!db.objectStoreNames.contains(FILE_STORE)) {
+                            db.createObjectStore(FILE_STORE, { keyPath: 'name' });
+                        }
+                        if (!db.objectStoreNames.contains(DATA_STORE)) {
+                            const dataStore = db.createObjectStore(DATA_STORE, { autoIncrement: true });
+                            dataStore.createIndex('fileName', 'fileName', { unique: false });
+                        }
+                    };
+                });
+                return dbPromise;
             } catch (e) {
                 console.error("IndexedDB não é suportado ou está bloqueado:", e);
-                reject(e);
+                return Promise.reject(e);
             }
-        });
+        };
         
         // --- FUNÇÕES DE CONTROLO ---
         const showLoading = (message = 'A processar...') => {
@@ -832,16 +837,18 @@
 
                     showLoading(`A guardar ${rawData.length.toLocaleString('pt-BR')} linhas...`);
 
-                    const db = await dbPromise;
-                    const dataTx = db.transaction(DATA_STORE, 'readwrite');
-                    const dataStore = dataTx.objectStore(DATA_STORE);
-                    rawData.forEach(row => dataStore.add({ ...row, fileName: file.name }));
-                    await new Promise(resolve => dataTx.oncomplete = resolve);
+                    if (isDbAvailable) {
+                        const db = await dbPromise;
+                        const dataTx = db.transaction(DATA_STORE, 'readwrite');
+                        const dataStore = dataTx.objectStore(DATA_STORE);
+                        rawData.forEach(row => dataStore.add({ ...row, fileName: file.name }));
+                        await new Promise(resolve => dataTx.oncomplete = resolve);
 
-                    const fileTx = db.transaction(FILE_STORE, 'readwrite');
-                    const fileStore = fileTx.objectStore(FILE_STORE);
-                    fileStore.add({ name: file.name, uploadDate: new Date().toISOString() });
-                    await new Promise(resolve => fileTx.oncomplete = resolve);
+                        const fileTx = db.transaction(FILE_STORE, 'readwrite');
+                        const fileStore = fileTx.objectStore(FILE_STORE);
+                        fileStore.add({ name: file.name, uploadDate: new Date().toISOString() });
+                        await new Promise(resolve => fileTx.oncomplete = resolve);
+                    }
                     
                     allData.push(...rawData.map(r => ({...r, fileName: file.name})));
                     loadedFiles.push({ name: file.name, uploadDate: new Date().toISOString() });
@@ -868,26 +875,28 @@
         
         const removeFile = async (fileNameToRemove) => {
             try {
-                showLoading(`A remover o ficheiro ${fileNameToRemove}...`);
-                const db = await dbPromise;
-                
-                const dataTx = db.transaction(DATA_STORE, 'readwrite');
-                const dataStore = dataTx.objectStore(DATA_STORE);
-                const dataIndex = dataStore.index('fileName');
-                const request = dataIndex.openCursor(IDBKeyRange.only(fileNameToRemove));
-                
-                request.onsuccess = event => {
-                    const cursor = event.target.result;
-                    if(cursor){
-                        cursor.delete();
-                        cursor.continue();
-                    }
-                };
-                await new Promise(resolve => dataTx.oncomplete = resolve);
+                if (isDbAvailable) {
+                    showLoading(`A remover o ficheiro ${fileNameToRemove}...`);
+                    const db = await dbPromise;
+                    
+                    const dataTx = db.transaction(DATA_STORE, 'readwrite');
+                    const dataStore = dataTx.objectStore(DATA_STORE);
+                    const dataIndex = dataStore.index('fileName');
+                    const request = dataIndex.openCursor(IDBKeyRange.only(fileNameToRemove));
+                    
+                    request.onsuccess = event => {
+                        const cursor = event.target.result;
+                        if(cursor){
+                            cursor.delete();
+                            cursor.continue();
+                        }
+                    };
+                    await new Promise(resolve => dataTx.oncomplete = resolve);
 
-                const fileTx = db.transaction(FILE_STORE, 'readwrite');
-                fileTx.objectStore(FILE_STORE).delete(fileNameToRemove);
-                await new Promise(resolve => fileTx.oncomplete = resolve);
+                    const fileTx = db.transaction(FILE_STORE, 'readwrite');
+                    fileTx.objectStore(FILE_STORE).delete(fileNameToRemove);
+                    await new Promise(resolve => fileTx.oncomplete = resolve);
+                }
 
                 allData = allData.filter(row => row.fileName !== fileNameToRemove);
                 loadedFiles = loadedFiles.filter(file => file.name !== fileNameToRemove);
@@ -907,16 +916,18 @@
             if (!confirmed) return;
 
             try {
-                showLoading('A limpar todo o histórico...');
-                const db = await dbPromise;
-                
-                const dataTx = db.transaction(DATA_STORE, 'readwrite');
-                dataTx.objectStore(DATA_STORE).clear();
-                await new Promise(resolve => dataTx.oncomplete = resolve);
-                
-                const fileTx = db.transaction(FILE_STORE, 'readwrite');
-                fileTx.objectStore(FILE_STORE).clear();
-                await new Promise(resolve => fileTx.oncomplete = resolve);
+                 if (isDbAvailable) {
+                    showLoading('A limpar todo o histórico...');
+                    const db = await dbPromise;
+                    
+                    const dataTx = db.transaction(DATA_STORE, 'readwrite');
+                    dataTx.objectStore(DATA_STORE).clear();
+                    await new Promise(resolve => dataTx.oncomplete = resolve);
+                    
+                    const fileTx = db.transaction(FILE_STORE, 'readwrite');
+                    fileTx.objectStore(FILE_STORE).clear();
+                    await new Promise(resolve => fileTx.oncomplete = resolve);
+                }
 
                 allData = [];
                 loadedFiles = [];
@@ -996,8 +1007,9 @@
 
         // --- INICIALIZAÇÃO ---
         const initializeApp = async () => {
-            showLoading('A carregar dados locais...');
+            showLoading('A carregar dados...');
             try {
+                dbPromise = initDb();
                 const db = await dbPromise;
                 const fileTx = db.transaction(FILE_STORE, 'readonly');
                 const dataTx = db.transaction(DATA_STORE, 'readonly');
@@ -1019,13 +1031,15 @@
                 console.error("IndexedDB não está disponível. Os dados não serão guardados.", err);
                 const errorBanner = document.createElement('div');
                 errorBanner.id = 'error-banner';
-                errorBanner.className = 'bg-red-100 border-l-4 border-red-500 text-red-700 p-4 sticky top-0 z-20';
+                errorBanner.className = 'bg-yellow-100 border-l-4 border-yellow-500 text-yellow-700 p-4 sticky top-0 z-20';
                 errorBanner.setAttribute('role', 'alert');
                 errorBanner.innerHTML = `
-                    <p class="font-bold">Erro de Armazenamento</p>
-                    <p>Não foi possível aceder ao armazenamento local. Os dados não serão guardados entre sessões. Isto pode acontecer se estiver em modo de navegação anónima ou se o armazenamento estiver desativado nas definições do seu navegador.</p>
+                    <p class="font-bold">Aviso de Armazenamento</p>
+                    <p>Não foi possível aceder ao armazenamento local. Os dados carregados serão perdidos ao fechar a página. Isto pode acontecer se estiver em modo de navegação anónima.</p>
                 `;
                 document.body.insertBefore(errorBanner, document.body.firstChild);
+                historySection.style.display = 'none';
+                
                 allData = [];
                 loadedFiles = [];
                 renderLoadedFiles();
