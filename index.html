@@ -91,6 +91,7 @@
         let currentView = 'dashboard';
         let appliedDateRange = { start: '', end: '' };
         let selectedRegion = null;
+        let selectedCarrier = null;
         let selectedReason = null; // { reason: '...', type: 'delay' | 'discrepancy' }
 
         // --- ELEMENTOS DO DOM ---
@@ -155,10 +156,22 @@
         const goBackToDashboard = () => {
             selectedRegion = null;
             selectedReason = null;
+            selectedCarrier = null;
             renderDashboard();
         };
 
         // --- FUNÇÕES DE RENDERIZAÇÃO ---
+        const getOtifColorClass = (value) => {
+            if (value >= 96) return 'bg-green-500';
+            if (value > 90) return 'bg-yellow-400';
+            return 'bg-red-500';
+        };
+
+        const getOtifTextColorClass = (value) => {
+            if (value > 90 && value < 96) return 'text-black';
+            return 'text-white';
+        };
+
         const renderLoadedFiles = () => {
             if (loadedFiles.length === 0) {
                 loadedFilesList.innerHTML = `<p class="text-gray-500">Nenhum ficheiro foi carregado ainda.</p>`;
@@ -188,6 +201,11 @@
             }
             
             const metrics = calculateMetrics();
+
+            if (selectedCarrier) {
+                dashboardView.innerHTML = renderCarrierDetailView(selectedCarrier, metrics);
+                return;
+            }
 
             if (selectedReason) {
                 dashboardView.innerHTML = renderReasonDetailView(selectedReason, metrics.carrierPerformanceByReason);
@@ -224,8 +242,8 @@
                     ${renderStatCard('Total de Linhas', metrics.totalDeliveries.toLocaleString('pt-BR'), 'bg-gray-200 text-gray-700', '<svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2H5a2 2 0 00-2 2v2m14 0h-2" /></svg>')}
                 </div>
                 <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-                    ${renderBarChart('carrier-performance', metrics.carrierPerformance, 'Performance OTIF por Transportadora', 'bg-blue-500')}
-                    ${renderBarChart('region-performance', metrics.regionPerformance, 'Performance OTIF por Região (Clique para detalhar)', 'bg-teal-500', true)}
+                    ${renderBarChart('carrier-performance', metrics.carrierPerformance, 'Performance OTIF por Transportadora (Clique para detalhar)', true)}
+                    ${renderBarChart('region-performance', metrics.regionPerformance, 'Performance OTIF por Região (Clique para detalhar)', true)}
                 </div>
                  <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
                     ${renderReasonTable(metrics.topDelayReasons, 'Principais Motivos de Atraso', metrics.totalDeliveries - metrics.totalCategorizedDelays, 'delay')}
@@ -266,7 +284,7 @@
                 </div>
             </div>`;
 
-        const renderBarChart = (id, chartData, title, barColorClass, isClickable = false) => {
+        const renderBarChart = (id, chartData, title, isClickable = false) => {
              if (!chartData || chartData.length === 0) {
                 return `<div id="${id}" class="bg-white p-6 rounded-lg shadow-md"><h3 class="text-lg font-semibold mb-4 text-gray-700">${title}</h3><p class="text-gray-500">Não há dados suficientes para exibir.</p></div>`;
             }
@@ -276,10 +294,10 @@
                     <h3 class="text-lg font-semibold mb-4 text-gray-700">${title}</h3>
                     <div class="space-y-4">
                         ${chartData.map(item => `
-                            <div data-label="${item.label}" class="flex items-center group ${isClickable ? 'cursor-pointer region-bar' : ''}">
+                            <div data-label="${item.label}" class="flex items-center group ${isClickable ? 'cursor-pointer clickable-bar' : ''}">
                                 <p class="w-1/4 text-sm text-gray-600 truncate pr-2 group-hover:text-blue-600">${item.label}</p>
                                 <div class="w-3/4 bg-gray-200 rounded-full h-6">
-                                    <div class="${barColorClass} h-6 rounded-full text-white text-xs flex items-center justify-end pr-2 group-hover:opacity-80 transition-opacity" style="width: ${(maxValue > 0 ? (item.value / maxValue) * 100 : 0)}%;">
+                                    <div class="${getOtifColorClass(item.value)} h-6 rounded-full ${getOtifTextColorClass(item.value)} text-xs flex items-center justify-end pr-2 group-hover:opacity-80 transition-opacity" style="width: ${(maxValue > 0 ? (item.value / maxValue) * 100 : 0)}%;">
                                         ${item.value.toFixed(2)}%
                                     </div>
                                 </div>
@@ -349,9 +367,9 @@
                                      <tr>
                                         <td class="px-4 py-4 whitespace-nowrap text-sm text-gray-800 font-medium">${item.label}</td>
                                         <td class="px-4 py-4 whitespace-nowrap text-sm text-gray-500 text-center">${item.delayCount} de ${item.totalCount}</td>
-                                        <td class="px-4 py-4 whitespace-nowrap text-sm text-gray-500"><div class="w-full bg-gray-200 rounded-full h-5 relative"><div class="bg-blue-500 h-5 rounded-full" style="width: ${item.otifPercentage.toFixed(2)}%;"></div><span class="absolute inset-0 flex items-center justify-center text-xs font-bold text-white px-2">${item.otifPercentage.toFixed(2)}%</span></div></td>
-                                        <td class="px-4 py-4 whitespace-nowrap text-sm text-gray-500"><div class="w-full bg-gray-200 rounded-full h-5 relative"><div class="bg-green-500 h-5 rounded-full" style="width: ${item.onTimePercentage.toFixed(2)}%;"></div><span class="absolute inset-0 flex items-center justify-center text-xs font-bold text-white px-2">${item.onTimePercentage.toFixed(2)}%</span></div></td>
-                                        <td class="px-4 py-4 whitespace-nowrap text-sm text-gray-500"><div class="w-full bg-gray-200 rounded-full h-5 relative"><div class="bg-indigo-500 h-5 rounded-full" style="width: ${item.inFullPercentage.toFixed(2)}%;"></div><span class="absolute inset-0 flex items-center justify-center text-xs font-bold text-white px-2">${item.inFullPercentage.toFixed(2)}%</span></div></td>
+                                        <td class="px-4 py-4 whitespace-nowrap text-sm text-gray-500"><div class="w-full bg-gray-200 rounded-full h-5 relative"><div class="${getOtifColorClass(item.otifPercentage)} h-5 rounded-full" style="width: ${item.otifPercentage.toFixed(2)}%;"></div><span class="absolute inset-0 flex items-center justify-center text-xs font-bold ${getOtifTextColorClass(item.otifPercentage)} px-2">${item.otifPercentage.toFixed(2)}%</span></div></td>
+                                        <td class="px-4 py-4 whitespace-nowrap text-sm text-gray-500"><div class="w-full bg-gray-200 rounded-full h-5 relative"><div class="${getOtifColorClass(item.onTimePercentage)} h-5 rounded-full" style="width: ${item.onTimePercentage.toFixed(2)}%;"></div><span class="absolute inset-0 flex items-center justify-center text-xs font-bold ${getOtifTextColorClass(item.onTimePercentage)} px-2">${item.onTimePercentage.toFixed(2)}%</span></div></td>
+                                        <td class="px-4 py-4 whitespace-nowrap text-sm text-gray-500"><div class="w-full bg-gray-200 rounded-full h-5 relative"><div class="${getOtifColorClass(item.inFullPercentage)} h-5 rounded-full" style="width: ${item.inFullPercentage.toFixed(2)}%;"></div><span class="absolute inset-0 flex items-center justify-center text-xs font-bold ${getOtifTextColorClass(item.inFullPercentage)} px-2">${item.inFullPercentage.toFixed(2)}%</span></div></td>
                                     </tr>
                                 `).join('')}
                             </tbody>
@@ -405,23 +423,86 @@
                 </div>`;
         };
 
+        const renderCarrierDetailView = (carrierName, metrics) => {
+            const historicalData = metrics.historicalCarrierOtif;
+            const year = metrics.yearForHistory;
+            
+            if (!historicalData || !historicalData[carrierName]) {
+                 return `
+                    <div class="bg-white p-6 rounded-lg shadow-md col-span-1 lg:col-span-2">
+                        <button id="back-to-dashboard" class="mb-4 bg-blue-500 text-white font-bold py-2 px-4 rounded-md hover:bg-blue-600 transition-colors">&larr; Voltar</button>
+                        <h3 class="text-lg font-semibold mb-4 text-gray-700">Histórico Mensal para: <span class="text-blue-600">${carrierName}</span></h3>
+                        <p class="text-gray-500">Nenhum dado histórico encontrado para esta transportadora.</p>
+                    </div>`;
+            }
+
+            const months = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+            
+            let html = `
+                <div class="bg-white p-6 rounded-lg shadow-md col-span-1 lg:col-span-2">
+                    <button id="back-to-dashboard" class="mb-4 bg-blue-500 text-white font-bold py-2 px-4 rounded-md hover:bg-blue-600 transition-colors">&larr; Voltar</button>
+                    <h3 class="text-lg font-semibold mb-4 text-gray-700">Histórico Mensal de OTIF para <span class="text-blue-600">${carrierName}</span> (${year})</h3>
+                    <div class="relative flex" style="height: 300px;">
+                        <div class="flex flex-col justify-between text-xs text-gray-500 pr-2 border-r border-gray-200 h-full pb-5">
+                            <span>100%</span>
+                            <span>75%</span>
+                            <span>50%</span>
+                            <span>25%</span>
+                            <span>0%</span>
+                        </div>
+                        <div class="flex-1 grid grid-cols-12 pl-2 border-b border-gray-200">`;
+
+            months.forEach((_, monthIndex) => {
+                const monthKey = `${year}-${String(monthIndex + 1).padStart(2, '0')}`;
+                const otifValue = historicalData[carrierName][monthKey];
+                
+                html += `
+                    <div class="relative flex justify-center items-end h-full px-1">`;
+
+                if (otifValue !== undefined) {
+                     html += `
+                        <div class="absolute text-center w-full text-xs font-bold text-gray-800" style="bottom: calc(${otifValue}% + 4px);">
+                           ${otifValue.toFixed(1)}%
+                        </div>
+                        <div class="${getOtifColorClass(otifValue)} w-3/4" style="height: ${otifValue}%;"></div>`;
+                }
+                
+                html += `</div>`;
+            });
+            
+            html += `</div></div>`; // Fim da área do gráfico
+             // Eixo X
+            html += `<div class="flex pl-10 pt-2">
+                        <div class="grid grid-cols-12 w-full">
+                            ${months.map(m => `<div class="text-center text-xs text-gray-500">${m}</div>`).join('')}
+                        </div>
+                     </div>`;
+
+            html += `</div>`; // Fim do container
+            return html;
+        };
+
+
         // --- LÓGICA DE DADOS ---
+        const parseDate = (rowDateStr) => {
+            if (typeof rowDateStr === 'number') { // Formato Excel
+                const excelEpoch = new Date(1899, 11, 30);
+                return new Date(excelEpoch.getTime() + rowDateStr * 86400000);
+            }
+            if (String(rowDateStr).includes('/')) { // Formato DD/MM/YYYY
+                const parts = rowDateStr.split('/');
+                return new Date(`${parts[2]}-${parts[1]}-${parts[0]}T00:00:00`);
+            }
+            // Formato YYYY-MM-DD
+            return new Date(rowDateStr + 'T00:00:00');
+        };
+
         const calculateMetrics = () => {
              const filteredData = allData.filter(row => {
                 const rowDateStr = row['Data Pedido'];
                 if (!rowDateStr) return false; 
                 
-                let rowDate;
-                if (typeof rowDateStr === 'number') {
-                    const excelEpoch = new Date(1899, 11, 30);
-                    rowDate = new Date(excelEpoch.getTime() + rowDateStr * 86400000);
-                } else if (String(rowDateStr).includes('/')) {
-                    const parts = rowDateStr.split('/');
-                    rowDate = new Date(`${parts[2]}-${parts[1]}-${parts[0]}T00:00:00`);
-                } else { 
-                    rowDate = new Date(rowDateStr + 'T00:00:00');
-                }
-
+                const rowDate = parseDate(rowDateStr);
                 if(isNaN(rowDate.getTime())) return false; 
 
                 const startDate = appliedDateRange.start ? new Date(appliedDateRange.start + 'T00:00:00') : null;
@@ -528,12 +609,45 @@
                     .sort((a, b) => a.otifPercentage - b.otifPercentage);
             });
 
+            // --- LÓGICA DO HISTÓRICO ---
+            const latestYear = allData.length > 0 ? Math.max(...allData.map(r => parseDate(r['Data Pedido']).getFullYear()).filter(y => !isNaN(y))) : new Date().getFullYear();
+            const yearData = allData.filter(row => {
+                const rowDate = parseDate(row['Data Pedido']);
+                return rowDate && !isNaN(rowDate.getTime()) && rowDate.getFullYear() === latestYear;
+            });
+            const historicalCarrierOtif = yearData.reduce((acc, curr) => {
+                const carrier = curr['TRANSPORTADORA'];
+                const rowDate = parseDate(curr['Data Pedido']);
+                if (!carrier || isNaN(rowDate.getTime())) return acc;
+
+                const month = `${rowDate.getFullYear()}-${String(rowDate.getMonth() + 1).padStart(2, '0')}`;
+                const isOnTime = curr['Status Entrega'] !== 'Fora do Prazo';
+                const isInFull = !curr['Entrega divergente?'] || String(curr['Entrega divergente?']).toLowerCase() !== 'sim';
+
+                if (!acc[carrier]) acc[carrier] = {};
+                if (!acc[carrier][month]) acc[carrier][month] = { total: 0, otifCount: 0 };
+
+                acc[carrier][month].total++;
+                if (isOnTime && isInFull) acc[carrier][month].otifCount++;
+                
+                return acc;
+            }, {});
+            Object.keys(historicalCarrierOtif).forEach(carrier => {
+                Object.keys(historicalCarrierOtif[carrier]).forEach(month => {
+                    const { total, otifCount } = historicalCarrierOtif[carrier][month];
+                    historicalCarrierOtif[carrier][month] = (otifCount / total) * 100;
+                });
+            });
+
+
             return { 
                 totalDeliveries, otifRate, onTimeRate, inFullRate, carrierPerformance, regionPerformance, 
                 topDelayReasons, totalCategorizedDelays: onTimeCount,
                 topDiscrepancyReasons, totalCategorizedDiscrepancies: inFullCount, 
                 carrierPerformanceByRegion,
-                carrierPerformanceByReason
+                carrierPerformanceByReason,
+                historicalCarrierOtif,
+                yearForHistory: latestYear
             };
         };
 
@@ -609,7 +723,14 @@
                     hideLoading();
                 }
             };
-            reader.readAsArrayBuffer(file);
+            
+            if (fileExtension === 'csv') {
+                reader.readAsText(file, 'UTF-8');
+            } else if (fileExtension === 'xlsx') {
+                reader.readAsArrayBuffer(file);
+            } else {
+                importError.textContent = 'Formato de ficheiro não suportado. Use .csv ou .xlsx';
+            }
         };
         
         const removeFile = async (fileNameToRemove) => {
@@ -707,18 +828,26 @@
             if(e.target.id === 'apply-filter-btn') {
                 appliedDateRange.start = document.getElementById('start-date').value;
                 appliedDateRange.end = document.getElementById('end-date').value;
-                selectedRegion = null;
-                renderDashboard();
+                goBackToDashboard();
             }
             if(e.target.id === 'clear-filter-btn') {
                  appliedDateRange = { start: '', end: '' };
-                 selectedRegion = null;
-                 renderDashboard();
+                 goBackToDashboard();
             }
-             if(e.target.closest('.region-bar')) {
-                selectedRegion = e.target.closest('.region-bar').dataset.label;
-                renderDashboard();
+
+            if(e.target.closest('.clickable-bar')) {
+                const bar = e.target.closest('.clickable-bar');
+                const chart = bar.closest('.bg-white');
+                if(chart && chart.id === 'region-performance') {
+                    selectedRegion = bar.dataset.label;
+                    renderDashboard();
+                }
+                if(chart && chart.id === 'carrier-performance') {
+                    selectedCarrier = bar.dataset.label;
+                    renderDashboard();
+                }
             }
+
             if(e.target.closest('.reason-row')) {
                 const reasonRow = e.target.closest('.reason-row');
                 selectedReason = {
