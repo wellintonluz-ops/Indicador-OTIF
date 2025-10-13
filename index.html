@@ -231,6 +231,11 @@
             }
             
             dashboardView.innerHTML = `
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+                    ${renderSingleMetricChart(metrics.monthlyPerformance, 'Performance Mensal - OTIF', 'otifRate', metrics.yearForHistory)}
+                    ${renderSingleMetricChart(metrics.monthlyPerformance, 'Performance Mensal - On Time', 'onTimeRate', metrics.yearForHistory)}
+                    ${renderSingleMetricChart(metrics.monthlyPerformance, 'Performance Mensal - In Full', 'inFullRate', metrics.yearForHistory)}
+                </div>
                 <header class="mb-8">
                     ${renderDashboardHeader(metrics)}
                     ${renderDateFilter()}
@@ -493,6 +498,52 @@
             return html;
         };
 
+        const renderSingleMetricChart = (monthlyData, title, metricKey, year) => {
+            if (!monthlyData || monthlyData.length === 0) {
+                return '';
+            }
+
+            const months = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+            
+            let html = `
+                <div class="bg-white p-6 rounded-lg shadow-md">
+                    <h3 class="text-lg font-semibold mb-4 text-gray-700">${title} (${year})</h3>
+                    <div class="relative flex" style="height: 250px;">
+                        <div class="flex flex-col justify-between text-xs text-gray-500 pr-2 border-r border-gray-200 h-full pb-5">
+                            <span>100%</span>
+                            <span>75%</span>
+                            <span>50%</span>
+                            <span>25%</span>
+                            <span>0%</span>
+                        </div>
+                        <div class="flex-1 grid grid-cols-12 pl-2 border-b border-gray-200">`;
+
+            monthlyData.forEach(monthData => {
+                const value = monthData[metricKey];
+                html += `<div class="relative flex justify-center items-end h-full px-1 group">`;
+                if (value !== undefined) {
+                     html += `
+                        <div class="absolute text-center w-full text-xs font-bold text-gray-800" style="bottom: calc(${value}% + 4px);">
+                           ${value.toFixed(1)}%
+                        </div>
+                        <div class="${getOtifColorClass(value)} w-3/4" style="height: ${value}%;"></div>`;
+                }
+                html += `</div>`;
+            });
+            
+            html += `</div></div>`; // Fim da área do gráfico
+            
+            // Eixo X
+            html += `<div class="flex pl-10 pt-2">
+                        <div class="grid grid-cols-12 w-full">
+                            ${months.map(m => `<div class="text-center text-xs text-gray-500">${m}</div>`).join('')}
+                        </div>
+                     </div>`;
+
+            html += `</div>`; // Fim do container
+            return html;
+        };
+
 
         // --- LÓGICA DE DADOS ---
         const parseDate = (rowDateStr) => {
@@ -630,6 +681,44 @@
                 const rowDate = parseDate(row['Data Pedido']);
                 return rowDate && !isNaN(rowDate.getTime()) && rowDate.getFullYear() === latestYear;
             });
+
+            const monthlyPerformanceData = yearData.reduce((acc, curr) => {
+                const rowDate = parseDate(curr['Data Pedido']);
+                if (isNaN(rowDate.getTime())) return acc;
+
+                const monthKey = `${rowDate.getFullYear()}-${String(rowDate.getMonth() + 1).padStart(2, '0')}`;
+                const isOnTime = curr['Status Entrega'] !== 'Fora do Prazo';
+                const isInFull = !curr['Entrega divergente?'] || String(curr['Entrega divergente?']).toLowerCase() !== 'sim';
+                
+                if (!acc[monthKey]) acc[monthKey] = { total: 0, otifCount: 0, onTimeCount: 0, inFullCount: 0 };
+                
+                acc[monthKey].total++;
+                if(isOnTime) acc[monthKey].onTimeCount++;
+                if(isInFull) acc[monthKey].inFullCount++;
+                if (isOnTime && isInFull) acc[monthKey].otifCount++;
+                
+                return acc;
+            }, {});
+
+            const monthlyPerformance = Array.from({ length: 12 }).map((_, index) => {
+                const monthKey = `${latestYear}-${String(index + 1).padStart(2, '0')}`;
+                const data = monthlyPerformanceData[monthKey];
+                if (data && data.total > 0) {
+                    return {
+                        month: monthKey,
+                        otifRate: (data.otifCount / data.total) * 100,
+                        onTimeRate: (data.onTimeCount / data.total) * 100,
+                        inFullRate: (data.inFullCount / data.total) * 100,
+                    };
+                }
+                return {
+                    month: monthKey,
+                    otifRate: 0,
+                    onTimeRate: 0,
+                    inFullRate: 0,
+                };
+            });
+
             const historicalCarrierOtif = yearData.reduce((acc, curr) => {
                 const carrier = curr['TRANSPORTADORA'];
                 const rowDate = parseDate(curr['Data Pedido']);
@@ -665,6 +754,7 @@
                 carrierPerformanceByRegion,
                 carrierPerformanceByReason,
                 historicalCarrierOtif,
+                monthlyPerformance,
                 yearForHistory: latestYear
             };
         };
