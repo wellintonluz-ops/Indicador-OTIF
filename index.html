@@ -206,15 +206,26 @@ export default function App() {
             const tailwindScript = document.createElement('script');
             tailwindScript.id = tailwindScriptId;
             tailwindScript.src = 'https://cdn.tailwindcss.com';
-            tailwindScript.onload = () => setStylesLoaded(true);
-            tailwindScript.onerror = () => {
-                setError("Não foi possível carregar os estilos. O layout pode estar quebrado.");
-                setStylesLoaded(true); // Permite que a aplicação continue, mesmo com erro de estilo
-            };
             document.head.appendChild(tailwindScript);
-        } else {
-            setStylesLoaded(true);
         }
+
+        // Sondagem para verificar quando os estilos do Tailwind são realmente aplicados
+        const pollForStyles = setInterval(() => {
+            // O script do Tailwind injeta uma tag <style> com este atributo de dados
+            if (document.querySelector('style[data-tailwind]')) {
+                clearInterval(pollForStyles);
+                setStylesLoaded(true);
+            }
+        }, 100);
+
+        // Timeout de segurança para evitar um loop infinito
+        const timeout = setTimeout(() => {
+            clearInterval(pollForStyles);
+            if (!document.querySelector('style[data-tailwind]')) {
+                 setError("Não foi possível carregar os estilos. O layout pode estar quebrado.");
+            }
+            setStylesLoaded(true); // Continua mesmo que os estilos falhem
+        }, 10000); // 10 segundos
 
         // Carrega o script do leitor de XLSX
         const xlsxScript = document.createElement('script');
@@ -255,6 +266,8 @@ export default function App() {
         loadInitialData();
 
         return () => {
+            clearInterval(pollForStyles);
+            clearTimeout(timeout);
             const scriptElement = document.querySelector(`script[src="${xlsxSrc}"]`);
             if (scriptElement) {
                 document.body.removeChild(scriptElement);
