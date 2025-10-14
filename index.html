@@ -14,10 +14,14 @@
         .container {
             max-width: 1280px;
         }
+        #modal-content {
+             transition: transform 0.2s ease-out, opacity 0.2s ease-out;
+        }
     </style>
 </head>
 <body class="bg-gray-100">
 
+    <!-- Overlay de Carregamento -->
     <div id="loading-overlay" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" style="display: none;">
         <div class="bg-white p-6 rounded-lg shadow-xl flex items-center">
             <svg class="animate-spin h-5 w-5 mr-3 text-blue-500" viewBox="0 0 24 24">
@@ -28,6 +32,7 @@
         </div>
     </div>
 
+    <!-- Cabeçalho -->
     <header class="bg-white shadow-md sticky top-0 z-10">
         <div class="container mx-auto flex items-center justify-between p-4">
             <h1 class="text-2xl font-bold text-gray-800">Análise OTIF</h1>
@@ -36,12 +41,13 @@
                     Dashboard
                 </button>
                 <button id="nav-import" class="ml-4 py-2 px-4 font-semibold rounded-md transition-colors text-gray-600 hover:bg-gray-200">
-                    Importar Arquivo
+                    Importar Ficheiro
                 </button>
             </nav>
         </div>
     </header>
 
+    <!-- Conteúdo Principal -->
     <main class="container mx-auto p-4 sm:p-6 lg:p-8">
         <!-- Vista de Importação -->
         <div id="import-view" style="display: none;">
@@ -61,13 +67,13 @@
                 <div id="history-section" class="w-full max-w-2xl p-8 bg-white rounded-lg shadow-lg">
                     <h3 class="text-xl font-bold text-gray-800 mb-4">Ficheiros Carregados</h3>
                     <ul id="loaded-files-list" class="space-y-3">
-                       <!-- A lista de ficheiros será inserida aqui -->
+                        <!-- A lista de ficheiros será inserida aqui -->
                     </ul>
                      <div class="mt-6 border-t pt-6">
-                        <button id="clear-history-btn" class="w-full font-bold py-2 px-4 rounded-md transition-colors bg-red-500 text-white hover:bg-red-600">
-                            Limpar Todo o Histórico
-                        </button>
-                    </div>
+                         <button id="clear-history-btn" class="w-full font-bold py-2 px-4 rounded-md transition-colors bg-red-500 text-white hover:bg-red-600">
+                             Limpar Todo o Histórico
+                         </button>
+                     </div>
                 </div>
             </div>
         </div>
@@ -77,6 +83,19 @@
              <!-- O conteúdo do dashboard será inserido aqui -->
         </div>
     </main>
+
+    <!-- Modal de Confirmação -->
+    <div id="confirmation-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" style="display: none;">
+        <div class="bg-white p-6 sm:p-8 rounded-lg shadow-xl w-11/12 max-w-md transform transition-all scale-95 opacity-0" id="modal-content">
+            <h2 id="modal-title" class="text-xl font-bold text-gray-800 mb-4">Confirmar Ação</h2>
+            <p id="modal-message" class="text-gray-600 mb-6">Você tem certeza?</p>
+            <div class="flex justify-end gap-4">
+                <button id="modal-cancel-btn" class="py-2 px-4 font-semibold rounded-md transition-colors text-gray-700 bg-gray-200 hover:bg-gray-300">Cancelar</button>
+                <button id="modal-confirm-btn" class="py-2 px-4 font-semibold rounded-md transition-colors bg-red-500 text-white hover:bg-red-600">Confirmar</button>
+            </div>
+        </div>
+    </div>
+
 
     <script type="module">
         // --- CONFIGURAÇÃO ---
@@ -115,33 +134,41 @@
         const loadedFilesList = document.getElementById('loaded-files-list');
         const clearHistoryBtn = document.getElementById('clear-history-btn');
         const historySection = document.getElementById('history-section');
+        const confirmationModal = document.getElementById('confirmation-modal');
+        const modalContent = document.getElementById('modal-content');
+        const modalTitle = document.getElementById('modal-title');
+        const modalMessage = document.getElementById('modal-message');
+        const modalCancelBtn = document.getElementById('modal-cancel-btn');
+        const modalConfirmBtn = document.getElementById('modal-confirm-btn');
+
+        let confirmAction = null;
 
         // --- BASE DE DADOS INDEXEDDB ---
         const initDb = () => {
              try {
-                dbPromise = new Promise((resolve, reject) => {
-                    const request = indexedDB.open(DB_NAME, DB_VERSION);
-                    request.onerror = (event) => {
-                        console.error("Erro ao abrir IndexedDB:", event.target.error);
-                        reject(event.target.error);
-                    };
-                    request.onsuccess = () => resolve(request.result);
-                    request.onupgradeneeded = event => {
-                        const db = event.target.result;
-                        if (!db.objectStoreNames.contains(FILE_STORE)) {
-                            db.createObjectStore(FILE_STORE, { keyPath: 'name' });
-                        }
-                        if (!db.objectStoreNames.contains(DATA_STORE)) {
-                            const dataStore = db.createObjectStore(DATA_STORE, { autoIncrement: true });
-                            dataStore.createIndex('fileName', 'fileName', { unique: false });
-                        }
-                    };
-                });
-                return dbPromise;
-            } catch (e) {
-                console.error("IndexedDB não é suportado ou está bloqueado:", e);
-                return Promise.reject(e);
-            }
+                 dbPromise = new Promise((resolve, reject) => {
+                     const request = indexedDB.open(DB_NAME, DB_VERSION);
+                     request.onerror = (event) => {
+                         console.error("Erro ao abrir IndexedDB:", event.target.error);
+                         reject(event.target.error);
+                     };
+                     request.onsuccess = () => resolve(request.result);
+                     request.onupgradeneeded = event => {
+                         const db = event.target.result;
+                         if (!db.objectStoreNames.contains(FILE_STORE)) {
+                             db.createObjectStore(FILE_STORE, { keyPath: 'name' });
+                         }
+                         if (!db.objectStoreNames.contains(DATA_STORE)) {
+                             const dataStore = db.createObjectStore(DATA_STORE, { autoIncrement: true });
+                             dataStore.createIndex('fileName', 'fileName', { unique: false });
+                         }
+                     };
+                 });
+                 return dbPromise;
+             } catch (e) {
+                 console.error("IndexedDB não é suportado ou está bloqueado:", e);
+                 return Promise.reject(e);
+             }
         };
         
         // --- FUNÇÕES DE CONTROLO ---
@@ -152,6 +179,26 @@
 
         const hideLoading = () => {
             loadingOverlay.style.display = 'none';
+        };
+
+        const showModal = (title, message, onConfirm) => {
+            modalTitle.textContent = title;
+            modalMessage.textContent = message;
+            confirmAction = onConfirm;
+            confirmationModal.style.display = 'flex';
+            setTimeout(() => {
+                modalContent.classList.remove('scale-95', 'opacity-0');
+                modalContent.classList.add('scale-100', 'opacity-100');
+            }, 10);
+        };
+
+        const hideModal = () => {
+            modalContent.classList.add('scale-95', 'opacity-0');
+            modalContent.classList.remove('scale-100', 'opacity-100');
+            setTimeout(() => {
+                confirmationModal.style.display = 'none';
+                confirmAction = null;
+            }, 200);
         };
         
         const switchView = (view) => {
@@ -173,17 +220,14 @@
             }
         };
 
-        const goBackOneLevel = () => {
-            if (selectedState) {
-                selectedState = null;
-            } else {
-                selectedRegion = null;
-                selectedCarrier = null;
-                selectedReason = null;
-                selectedDelayRange = null;
-            }
+        const navigateToState = (newState) => {
+            selectedRegion = newState.region;
+            selectedState = newState.state;
+            selectedCarrier = newState.carrier;
+            selectedReason = newState.reason;
+            selectedDelayRange = newState.delayRange;
             renderDashboard();
-        };
+        }
 
         // --- FUNÇÕES DE RENDERIZAÇÃO ---
         const getOtifColorClass = (value) => {
@@ -212,113 +256,137 @@
         
         const renderDashboard = () => {
              if (allData.length === 0) {
-                dashboardView.innerHTML = `
-                    <div class="text-center bg-white p-8 rounded-lg shadow-md">
-                        <svg xmlns="http://www.w3.org/2000/svg" class="mx-auto h-16 w-16 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V7a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
-                        <h2 class="mt-4 text-2xl font-bold text-gray-800 mb-4">Bem-vindo ao Dashboard OTIF</h2>
-                        <p class="text-gray-600 mb-6">Nenhum dado foi carregado. Por favor, vá à aba "Importar Arquivo" para começar.</p>
-                        <button id="go-to-import-btn" class="bg-blue-500 text-white font-bold py-2 px-6 rounded-md hover:bg-blue-600 transition-colors">
-                            Importar Arquivo
-                        </button>
-                    </div>
-                `;
-                return;
-            }
+                 dashboardView.innerHTML = `
+                     <div class="text-center bg-white p-8 rounded-lg shadow-md">
+                         <svg xmlns="http://www.w3.org/2000/svg" class="mx-auto h-16 w-16 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V7a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                         <h2 class="mt-4 text-2xl font-bold text-gray-800 mb-4">Bem-vindo ao Dashboard OTIF</h2>
+                         <p class="text-gray-600 mb-6">Nenhum dado foi carregado. Por favor, vá à aba "Importar Ficheiro" para começar.</p>
+                         <button id="go-to-import-btn" class="bg-blue-500 text-white font-bold py-2 px-6 rounded-md hover:bg-blue-600 transition-colors">
+                             Importar Ficheiro
+                         </button>
+                     </div>
+                 `;
+                 return;
+             }
             
+            let viewHtml = '';
+
+            if (selectedState) {
+                 viewHtml = renderStateDetailView(selectedRegion, selectedState);
+            } else if (selectedRegion) {
+                 viewHtml = renderRegionDetailView(selectedRegion);
+            } else if (selectedCarrier) {
+                 viewHtml = renderCarrierDetailView(selectedCarrier);
+            } else if (selectedReason) {
+                 viewHtml = renderReasonDetailView(selectedReason);
+            } else if (selectedDelayRange) {
+                 viewHtml = renderDelayDistributionDetailView(selectedDelayRange);
+            } else {
+                 viewHtml = renderMainDashboardView();
+            }
+
+            dashboardView.innerHTML = `
+                <div class="space-y-6">
+                    ${renderBreadcrumbs()}
+                    ${renderDateFilter()}
+                    ${viewHtml}
+                </div>
+            `;
+        };
+
+        const renderMainDashboardView = () => {
             const metrics = calculateMetrics();
 
-            if (selectedCarrier) {
-                dashboardView.innerHTML = renderCarrierDetailView(selectedCarrier, metrics);
-                return;
-            }
-
-            if (selectedReason) {
-                dashboardView.innerHTML = renderReasonDetailView(selectedReason, metrics.carrierPerformanceByReason);
-                return;
-            }
-            
-            if(selectedRegion && selectedState && metrics.performanceByCarrierInState[selectedState]) {
-                 dashboardView.innerHTML = renderCarrierInStateDetailView(selectedRegion, selectedState, metrics.performanceByCarrierInState[selectedState]);
-                return;
-            }
-
-            if (selectedRegion && metrics.performanceByStateInRegion[selectedRegion]) {
-                dashboardView.innerHTML = renderStateInRegionDetailView(selectedRegion, metrics.performanceByStateInRegion[selectedRegion]);
-                return;
-            }
-
-
-             if (selectedDelayRange) {
-                dashboardView.innerHTML = renderDelayDistributionDetailView(selectedDelayRange, metrics.carrierPerformanceByDelayRange);
-                return;
-            }
-            
-
             if (!metrics || metrics.totalDeliveries === 0) {
-                 dashboardView.innerHTML = `
-                     <header class="mb-8">
-                        ${renderDashboardHeader(metrics)}
-                        ${renderDateFilter()}
-                    </header>
-                    <div class="bg-white p-6 rounded-lg shadow-md text-center">
-                         <h3 class="text-lg font-semibold mb-4 text-gray-700">Nenhum dado encontrado</h3>
-                         <p class="text-gray-500">Não há registos que correspondam ao período selecionado.</p>
-                    </div>`;
-                return;
-            }
-            
-            dashboardView.innerHTML = `
-                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+                 return `<div class="bg-white p-6 rounded-lg shadow-md text-center">
+                              <h3 class="text-lg font-semibold mb-4 text-gray-700">Nenhum dado encontrado</h3>
+                              <p class="text-gray-500">Não há registos que correspondam aos filtros aplicados.</p>
+                          </div>`;
+             }
+
+            return `
+                ${renderDashboardHeader(metrics)}
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
                     ${renderSingleMetricChart(metrics.monthlyPerformance, 'Performance Mensal - OTIF', 'otifRate', metrics.yearForHistory, OTIF_TARGET)}
                     ${renderSingleMetricChart(metrics.monthlyPerformance, 'Performance Mensal - On Time', 'onTimeRate', metrics.yearForHistory, ONTIME_TARGET)}
                     ${renderSingleMetricChart(metrics.monthlyPerformance, 'Performance Mensal - In Full', 'inFullRate', metrics.yearForHistory, INFULL_TARGET)}
                 </div>
-                <header class="mb-8">
-                    ${renderDashboardHeader(metrics)}
-                    ${renderDateFilter()}
-                </header>
-                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
                     ${renderStatCard('OTIF Geral', `${metrics.otifRate.toFixed(2)}%`, 'bg-blue-100 text-blue-600', '<svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>')}
                     ${renderStatCard('On-Time (No Prazo)', `${metrics.onTimeRate.toFixed(2)}%`, 'bg-green-100 text-green-600', '<svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>')}
                     ${renderStatCard('In-Full (Sem Divergência)', `${metrics.inFullRate.toFixed(2)}%`, 'bg-indigo-100 text-indigo-600', '<svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" /></svg>')}
                     ${renderStatCard('Total de Linhas', metrics.totalDeliveries.toLocaleString('pt-BR'), 'bg-gray-200 text-gray-700', '<svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2H5a2 2 0 00-2 2v2m14 0h-2" /></svg>')}
                 </div>
-                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-                    ${renderBarChart('carrier-performance', metrics.carrierPerformance, 'Performance OTIF por Transportadora (Clique para detalhar)', true)}
-                    ${renderBarChart('region-performance', metrics.regionPerformance, 'Performance OTIF por Região (Clique para detalhar)', true)}
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    ${renderBarChart('carrier-performance', metrics.carrierPerformance, 'Performance OTIF por Transportadora', true)}
+                    ${renderBarChart('region-performance', metrics.regionPerformance, 'Performance OTIF por Região', true)}
                 </div>
-                 <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-                    ${renderReasonTable(metrics.topDelayReasons, 'Principais Motivos de Atraso', metrics.totalDeliveries - metrics.totalCategorizedDelays, 'delay')}
-                    ${renderReasonTable(metrics.topDiscrepancyReasons, 'Principais Motivos de Divergência', metrics.totalDeliveries - metrics.totalCategorizedDiscrepancies, 'discrepancy')}
+                 <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    ${renderReasonTable('delay-reasons', metrics.topDelayReasons, 'Principais Motivos de Atraso', metrics.totalDelayed, 'delay')}
+                    ${renderReasonTable('discrepancy-reasons', metrics.topDiscrepancyReasons, 'Principais Motivos de Divergência', metrics.totalDiscrepancy, 'discrepancy')}
                 </div>
-                 <div class="grid grid-cols-1 gap-6 mb-8">
+                 <div class="grid grid-cols-1 gap-6">
                     ${renderCountBarChart('delay-distribution', metrics.delayDistributionData, 'Distribuição de Atrasos (Dias Úteis)', true)}
                 </div>
             `;
-        };
+        }
 
         const renderDashboardHeader = (metrics) => `
-            <div class="flex flex-wrap justify-between items-start gap-4 mb-6">
+            <div class="flex flex-wrap justify-between items-start gap-4 p-6 bg-white rounded-lg shadow-md">
                 <div>
                     <h2 class="text-2xl font-bold text-gray-800">Resumo da Performance</h2>
-                    <p class="text-gray-600">Analisando ${loadedFiles.length} ficheiro(s) com ${allData.length.toLocaleString('pt-BR')} linhas.</p>
+                    <p class="text-gray-600">Analisando ${metrics.totalDeliveries.toLocaleString('pt-BR')} linhas de ${loadedFiles.length} ficheiro(s).</p>
                 </div>
             </div>`;
             
         const renderDateFilter = () => `
              <div class="bg-white p-4 rounded-lg shadow-md flex flex-wrap items-center gap-4">
-                <span class="font-semibold text-gray-700">Filtrar por Período:</span>
-                <div>
-                    <label for="start-date" class="text-sm text-gray-600 mr-2">De:</label>
-                    <input type="date" name="start" id="start-date" value="${appliedDateRange.start}" class="border-gray-300 rounded-md shadow-sm p-2">
-                </div>
-                <div>
-                   <label for="end-date" class="text-sm text-gray-600 mr-2">Até:</label>
-                   <input type="date" name="end" id="end-date" value="${appliedDateRange.end}" class="border-gray-300 rounded-md shadow-sm p-2">
-                </div>
-                <button id="apply-filter-btn" class="bg-blue-500 text-white font-bold py-2 px-4 rounded-md hover:bg-blue-600 transition-colors">Aplicar</button>
-                <button id="clear-filter-btn" class="bg-gray-300 text-gray-800 font-bold py-2 px-4 rounded-md hover:bg-gray-400 transition-colors">Limpar Filtro</button>
-            </div>`;
+                 <span class="font-semibold text-gray-700">Filtrar por Período:</span>
+                 <div>
+                     <label for="start-date" class="text-sm text-gray-600 mr-2">De:</label>
+                     <input type="date" name="start" id="start-date" value="${appliedDateRange.start}" class="border-gray-300 rounded-md shadow-sm p-2">
+                 </div>
+                 <div>
+                    <label for="end-date" class="text-sm text-gray-600 mr-2">Até:</label>
+                    <input type="date" name="end" id="end-date" value="${appliedDateRange.end}" class="border-gray-300 rounded-md shadow-sm p-2">
+                 </div>
+                 <button id="apply-filter-btn" class="bg-blue-500 text-white font-bold py-2 px-4 rounded-md hover:bg-blue-600 transition-colors">Aplicar</button>
+                 <button id="clear-filter-btn" class="bg-gray-300 text-gray-800 font-bold py-2 px-4 rounded-md hover:bg-gray-400 transition-colors">Limpar Filtro</button>
+             </div>`;
+        
+        const renderBreadcrumbs = () => {
+            let crumbs = [{ label: 'Dashboard', state: { region: null, state: null, carrier: null, reason: null, delayRange: null } }];
+
+            if (selectedRegion) crumbs.push({ label: selectedRegion, state: { region: selectedRegion, state: null } });
+            if (selectedState) crumbs.push({ label: selectedState, state: { region: selectedRegion, state: selectedState } });
+            
+            // Terminal views don't add a breadcrumb but show the context in the title
+            let titleCrumb = '';
+            if(selectedCarrier) titleCrumb = `Transportadora: ${selectedCarrier}`;
+            if(selectedReason) titleCrumb = `Motivo: ${selectedReason.reason}`;
+            if(selectedDelayRange) titleCrumb = `Atraso: ${selectedDelayRange}`;
+
+            if(titleCrumb) crumbs.push({label: titleCrumb, state: {}});
+
+
+            return `<nav class="flex" aria-label="Breadcrumb">
+              <ol class="inline-flex items-center space-x-1 md:space-x-3">
+                ${crumbs.map((crumb, index) => {
+                    const isLast = index === crumbs.length - 1;
+                    if (isLast) {
+                        return `<li aria-current="page"><div class="flex items-center"><span class="ml-1 text-sm font-bold text-gray-700 md:ml-2">${crumb.label}</span></div></li>`;
+                    } else {
+                        return `<li class="inline-flex items-center">
+                          <a href="#" class="breadcrumb-link inline-flex items-center text-sm font-medium text-blue-600 hover:text-blue-800" data-state='${JSON.stringify(crumb.state)}'>
+                            ${index > 0 ? '<svg class="w-3 h-3 text-gray-400 mx-1" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 6 10"><path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m1 9 4-4-4-4"/></svg>' : ''}
+                            ${crumb.label}
+                          </a>
+                        </li>`;
+                    }
+                }).join('')}
+              </ol>
+            </nav>`;
+        };
 
         const renderStatCard = (title, value, color, icon) => `
             <div class="bg-white p-6 rounded-lg shadow-md flex items-center">
@@ -331,9 +399,8 @@
 
         const renderBarChart = (id, chartData, title, isClickable = false) => {
              if (!chartData || chartData.length === 0) {
-                return `<div id="${id}" class="bg-white p-6 rounded-lg shadow-md"><h3 class="text-lg font-semibold mb-4 text-gray-700">${title}</h3><p class="text-gray-500">Não há dados suficientes para exibir.</p></div>`;
-            }
-            const maxValue = 100; // Use 100 as max for consistent scaling
+                 return `<div id="${id}" class="bg-white p-6 rounded-lg shadow-md"><h3 class="text-lg font-semibold mb-4 text-gray-700">${title}</h3><p class="text-gray-500">Não há dados suficientes para exibir.</p></div>`;
+             }
             return `
                 <div id="${id}" class="bg-white p-6 rounded-lg shadow-md">
                     <h3 class="text-lg font-semibold mb-2 text-gray-700">${title}</h3>
@@ -363,15 +430,15 @@
             }
             const maxValue = Math.max(...chartData.map(item => item.value));
             return `
-                <div id="${id}" class="bg-white p-6 rounded-lg shadow-md col-span-1 lg:col-span-2">
-                    <h3 class="text-lg font-semibold mb-4 text-gray-700">${title} (Clique para detalhar)</h3>
+                <div id="${id}" class="bg-white p-6 rounded-lg shadow-md">
+                    <h3 class="text-lg font-semibold mb-4 text-gray-700">${title}</h3>
                     <div class="space-y-4">
                         ${chartData.map(item => `
                             <div data-label="${item.label}" class="flex items-center group ${isClickable ? 'cursor-pointer clickable-bar' : ''}">
-                                <p class="w-1/4 text-sm text-gray-600 truncate pr-2">${item.label}</p>
+                                <p class="w-1/4 text-sm text-gray-600 truncate pr-2 group-hover:text-blue-600">${item.label}</p>
                                 <div class="w-3/4 bg-gray-200 rounded-full h-6">
-                                    <div class="bg-red-500 h-6 rounded-full text-white text-xs flex items-center justify-end pr-2" style="width: ${(maxValue > 0 ? (item.value / maxValue) * 100 : 0)}%;">
-                                        ${item.value}
+                                    <div class="bg-red-500 h-6 rounded-full text-white text-xs flex items-center justify-end pr-2 group-hover:opacity-80 transition-opacity" style="width: ${(maxValue > 0 ? (item.value / maxValue) * 100 : 0)}%;">
+                                        ${item.value.toLocaleString('pt-BR')}
                                     </div>
                                 </div>
                             </div>
@@ -380,27 +447,27 @@
                 </div>`;
         };
 
-        const renderReasonTable = (tableData, title, total, type) => {
+        const renderReasonTable = (id, tableData, title, total, type) => {
             if (!tableData || tableData.length === 0) {
-                 return `<div class="bg-white p-6 rounded-lg shadow-md"><h3 class="text-lg font-semibold mb-4 text-gray-700">${title}</h3><p class="text-gray-500">Nenhum motivo registrado.</p></div>`;
+                 return `<div id="${id}" class="bg-white p-6 rounded-lg shadow-md"><h3 class="text-lg font-semibold mb-4 text-gray-700">${title}</h3><p class="text-gray-500">Nenhum motivo registado.</p></div>`;
             }
             return `
-                <div class="bg-white p-6 rounded-lg shadow-md">
-                    <h3 class="text-lg font-semibold mb-4 text-gray-700">${title} (Clique para detalhar)</h3>
+                <div id="${id}" class="bg-white p-6 rounded-lg shadow-md">
+                    <h3 class="text-lg font-semibold mb-4 text-gray-700">${title}</h3>
                     <div class="overflow-x-auto">
                         <table class="min-w-full divide-y divide-gray-200">
                             <thead class="bg-gray-50">
                                 <tr>
                                     <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Motivo</th>
                                     <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Ocorrências</th>
-                                    <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Percentual</th>
+                                    <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">% do Total</th>
                                 </tr>
                             </thead>
                             <tbody class="bg-white divide-y divide-gray-200">
                                 ${tableData.map(item => `
                                     <tr data-reason="${item.reason}" data-type="${type}" class="reason-row cursor-pointer hover:bg-gray-50">
                                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-800">${item.reason}</td>
-                                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${item.count}</td>
+                                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${item.count.toLocaleString('pt-BR')}</td>
                                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${total > 0 ? ((item.count / total) * 100).toFixed(2) : '0.00'}%</td>
                                     </tr>
                                 `).join('')}
@@ -410,33 +477,61 @@
                 </div>`;
         };
         
-        const renderStateInRegionDetailView = (region, stateData) => {
-             return `
-                <div class="bg-white p-6 rounded-lg shadow-md col-span-1 lg:col-span-2">
-                    <button id="back-to-dashboard" class="mb-4 bg-blue-500 text-white font-bold py-2 px-4 rounded-md hover:bg-blue-600 transition-colors">&larr; Voltar</button>
-                    ${renderBarChart('state-performance', stateData, `Performance OTIF por Estado em ${region}`, true)}
-                </div>`;
-        };
-        
-        const renderCarrierInStateDetailView = (region, state, carrierData) => {
-             return `
-                <div class="bg-white p-6 rounded-lg shadow-md col-span-1 lg:col-span-2">
-                    <button id="back-to-dashboard" class="mb-4 bg-blue-500 text-white font-bold py-2 px-4 rounded-md hover:bg-blue-600 transition-colors">&larr; Voltar para ${region}</button>
-                    ${renderBarChart('carrier-in-state-performance', carrierData, `Performance OTIF por Transportadora em ${state}`, false)}
-                </div>`;
+        const renderRegionDetailView = (region) => {
+            const regionData = getFilteredData().filter(row => row['Região'] === region);
+            const metrics = calculateMetrics(regionData);
+
+            if (metrics.totalDeliveries === 0) {
+                 return `<div class="bg-white p-6 rounded-lg shadow-md text-center"><h3 class="text-lg font-semibold text-gray-700">Nenhum dado para a região ${region} no período selecionado.</h3></div>`;
+            }
+
+            return `
+            ${renderDashboardHeader(metrics)}
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+                ${renderStatCard('OTIF na Região', `${metrics.otifRate.toFixed(2)}%`, 'bg-blue-100 text-blue-600', '<svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>')}
+                ${renderStatCard('On-Time', `${metrics.onTimeRate.toFixed(2)}%`, 'bg-green-100 text-green-600', '<svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>')}
+                ${renderStatCard('In-Full', `${metrics.inFullRate.toFixed(2)}%`, 'bg-indigo-100 text-indigo-600', '<svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" /></svg>')}
+                ${renderStatCard('Total de Linhas', metrics.totalDeliveries.toLocaleString('pt-BR'), 'bg-gray-200 text-gray-700', '<svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2H5a2 2 0 00-2 2v2m14 0h-2" /></svg>')}
+            </div>
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                ${renderBarChart('state-performance', metrics.statePerformance, `Performance por Estado em ${region}`, true)}
+                ${renderBarChart('carrier-performance-region', metrics.carrierPerformance, `Top Transportadoras em ${region}`, true)}
+            </div>
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                ${renderReasonTable('delay-reasons-region', metrics.topDelayReasons, `Principais Motivos de Atraso em ${region}`, metrics.totalDelayed, 'delay')}
+                ${renderReasonTable('discrepancy-reasons-region', metrics.topDiscrepancyReasons, `Principais Motivos de Divergência em ${region}`, metrics.totalDiscrepancy, 'discrepancy')}
+            </div>
+            `;
         };
 
-        const renderReasonDetailView = (reasonInfo, detailData) => {
+        const renderStateDetailView = (region, state) => {
+            const stateData = getFilteredData().filter(row => row['UF'] === state);
+            const metrics = calculateMetrics(stateData);
+
+             if (metrics.totalDeliveries === 0) {
+                 return `<div class="bg-white p-6 rounded-lg shadow-md text-center"><h3 class="text-lg font-semibold text-gray-700">Nenhum dado para o estado ${state} no período selecionado.</h3></div>`;
+            }
+
+            return `
+            ${renderDashboardHeader(metrics)}
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+                ${renderStatCard('OTIF no Estado', `${metrics.otifRate.toFixed(2)}%`, 'bg-blue-100 text-blue-600', '<svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>')}
+                ${renderStatCard('Total de Linhas', metrics.totalDeliveries.toLocaleString('pt-BR'), 'bg-gray-200 text-gray-700', '<svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2H5a2 2 0 00-2 2v2m14 0h-2" /></svg>')}
+            </div>
+            <div class="grid grid-cols-1 gap-6">
+                ${renderBarChart('carrier-in-state-performance', metrics.carrierPerformance, `Performance por Transportadora em ${state}`, true)}
+            </div>
+            `;
+        };
+
+        const renderReasonDetailView = (reasonInfo) => {
+            const data = getFilteredData();
+            const metrics = calculateMetrics(data); // Using global metrics to get carrierPerformanceByReason
             const typeText = reasonInfo.type === 'delay' ? 'Atraso' : 'Divergência';
-            const dataForReason = detailData[reasonInfo.type][reasonInfo.reason];
+            const dataForReason = metrics.carrierPerformanceByReason[reasonInfo.type][reasonInfo.reason];
 
             if (!dataForReason) {
-                return `
-                <div class="bg-white p-6 rounded-lg shadow-md col-span-1 lg:col-span-2">
-                    <button id="back-to-dashboard" class="mb-4 bg-blue-500 text-white font-bold py-2 px-4 rounded-md hover:bg-blue-600 transition-colors">&larr; Voltar</button>
-                    <h3 class="text-lg font-semibold mb-4 text-gray-700">Detalhes para o Motivo de ${typeText}: <span class="text-blue-600">${reasonInfo.reason}</span></h3>
-                    <p class="text-gray-500">Nenhum dado de transportadora encontrado para este motivo.</p>
-                </div>`;
+                return `<div class="bg-white p-6 rounded-lg shadow-md"><h3 class="text-lg font-semibold mb-4 text-gray-700">Detalhes para o Motivo de ${typeText}: <span class="text-blue-600">${reasonInfo.reason}</span></h3><p class="text-gray-500">Nenhum dado de transportadora encontrado para este motivo.</p></div>`;
             }
 
             const totalOccurrences = Object.values(dataForReason).reduce((a, b) => a + b, 0);
@@ -444,44 +539,39 @@
                 .map(([carrier, count]) => ({ label: carrier, count }))
                 .sort((a, b) => b.count - a.count);
 
-            return `
-                <div class="bg-white p-6 rounded-lg shadow-md col-span-1 lg:col-span-2">
-                    <button id="back-to-dashboard" class="mb-4 bg-blue-500 text-white font-bold py-2 px-4 rounded-md hover:bg-blue-600 transition-colors">&larr; Voltar</button>
-                    <h3 class="text-lg font-semibold mb-4 text-gray-700">Detalhes para o Motivo de ${typeText}: <span class="text-blue-600">${reasonInfo.reason}</span></h3>
-                    <div class="overflow-x-auto">
-                        <table class="min-w-full divide-y divide-gray-200">
-                            <thead class="bg-gray-50">
+            return `<div class="bg-white p-6 rounded-lg shadow-md">
+                <h3 class="text-lg font-semibold mb-4 text-gray-700">Transportadoras com Motivo de ${typeText}: <span class="text-blue-600">${reasonInfo.reason}</span></h3>
+                <div class="overflow-x-auto">
+                    <table class="min-w-full divide-y divide-gray-200">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Transportadora</th>
+                                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Ocorrências</th>
+                                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">% do Total</th>
+                            </tr>
+                        </thead>
+                        <tbody class="bg-white divide-y divide-gray-200">
+                            ${tableData.map(item => `
                                 <tr>
-                                    <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Transportadora</th>
-                                    <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Ocorrências</th>
-                                    <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Percentual do Total</th>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">${item.label}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${item.count}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${((item.count / totalOccurrences) * 100).toFixed(2)}%</td>
                                 </tr>
-                            </thead>
-                            <tbody class="bg-white divide-y divide-gray-200">
-                                ${tableData.map(item => `
-                                    <tr>
-                                        <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">${item.label}</td>
-                                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${item.count}</td>
-                                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${((item.count / totalOccurrences) * 100).toFixed(2)}%</td>
-                                    </tr>
-                                `).join('')}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>`;
+                            `).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            </div>`;
         };
 
-        const renderCarrierDetailView = (carrierName, metrics) => {
+        const renderCarrierDetailView = (carrierName) => {
+            const data = getFilteredData();
+            const metrics = calculateMetrics(data);
             const historicalData = metrics.historicalCarrierOtif;
             const year = metrics.yearForHistory;
             
             if (!historicalData || !historicalData[carrierName]) {
-                 return `
-                    <div class="bg-white p-6 rounded-lg shadow-md col-span-1 lg:col-span-2">
-                        <button id="back-to-dashboard" class="mb-4 bg-blue-500 text-white font-bold py-2 px-4 rounded-md hover:bg-blue-600 transition-colors">&larr; Voltar</button>
-                        <h3 class="text-lg font-semibold mb-4 text-gray-700">Histórico Mensal para: <span class="text-blue-600">${carrierName}</span></h3>
-                        <p class="text-gray-500">Nenhum dado histórico encontrado para esta transportadora.</p>
-                    </div>`;
+                 return `<div class="bg-white p-6 rounded-lg shadow-md"><h3 class="text-lg font-semibold mb-4 text-gray-700">Histórico Mensal para: <span class="text-blue-600">${carrierName}</span></h3><p class="text-gray-500">Nenhum dado histórico encontrado para esta transportadora.</p></div>`;
             }
 
             const months = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
@@ -495,62 +585,40 @@
                 };
             });
             
-            let html = `
-                <div class="bg-white p-6 rounded-lg shadow-md col-span-1 lg:col-span-2">
-                    <button id="back-to-dashboard" class="mb-4 bg-blue-500 text-white font-bold py-2 px-4 rounded-md hover:bg-blue-600 transition-colors">&larr; Voltar</button>
-                    <h3 class="text-lg font-semibold mb-4 text-gray-700">Histórico Mensal de OTIF para <span class="text-blue-600">${carrierName}</span> (${year})</h3>
-                    <div class="relative flex" style="height: 300px;">
-                        <div class="relative w-10 flex-shrink-0 pr-2 text-xs text-right text-gray-500 h-full pb-5 border-r border-gray-200">
-                            <span class="absolute right-2" style="bottom: 100%; transform: translateY(50%);">100%</span>
-                            <span class="absolute right-2" style="bottom: 75%; transform: translateY(50%);">75%</span>
-                            <span class="absolute right-2" style="bottom: 50%; transform: translateY(50%);">50%</span>
-                            <span class="absolute right-2" style="bottom: 25%; transform: translateY(50%);">25%</span>
-                            <span class="absolute right-2 bottom-0">0%</span>
-                        </div>
-                        <div class="flex-1 grid grid-cols-12 pl-2 border-b border-gray-200">`;
+            let html = `<div class="bg-white p-6 rounded-lg shadow-md">
+                <h3 class="text-lg font-semibold mb-4 text-gray-700">Histórico Mensal de OTIF para <span class="text-blue-600">${carrierName}</span> (${year})</h3>
+                <div class="relative flex" style="height: 300px;">
+                    <div class="relative w-10 flex-shrink-0 pr-2 text-xs text-right text-gray-500 h-full pb-5 border-r border-gray-200">
+                        <span class="absolute right-2" style="bottom: 100%; transform: translateY(50%);">100%</span>
+                        <span class="absolute right-2" style="bottom: 75%; transform: translateY(50%);">75%</span>
+                        <span class="absolute right-2" style="bottom: 50%; transform: translateY(50%);">50%</span>
+                        <span class="absolute right-2" style="bottom: 25%; transform: translateY(50%);">25%</span>
+                        <span class="absolute right-2 bottom-0">0%</span>
+                    </div>
+                    <div class="flex-1 grid grid-cols-12 pl-2 border-b border-gray-200">`;
 
             chartData.forEach(item => {
-                html += `
-                    <div class="relative flex justify-center items-end h-full px-1">`;
-
+                html += `<div class="relative flex justify-center items-end h-full px-1">`;
                 if (item.value !== undefined) {
-                     html += `
-                        <div class="absolute text-center w-full text-xs font-bold text-gray-800" style="bottom: calc(${item.value}% + 4px);">
-                           ${item.value.toFixed(1)}%
-                        </div>
-                        <div class="${getOtifColorClass(item.value)} w-3/4" style="height: ${item.value}%;"></div>`;
+                    html += `<div class="absolute text-center w-full text-xs font-bold text-gray-800" style="bottom: calc(${item.value}% + 4px);">${item.value.toFixed(1)}%</div>
+                           <div class="${getOtifColorClass(item.value)} w-3/4" style="height: ${item.value}%;"></div>`;
                 }
-                
                 html += `</div>`;
             });
             
-            html += `</div></div>`; // Fim da área do gráfico
-             // Eixo X
-            html += `<div class="flex pl-10 pt-2">
-                        <div class="grid grid-cols-12 w-full">
-                            ${chartData.map(item => `
-                                <div class="text-center text-xs text-gray-500">
-                                    <div>${item.label}</div>
-                                    <div class="text-gray-400">(${item.totalCount})</div>
-                                </div>
-                            `).join('')}
-                        </div>
-                     </div>`;
-
-            html += `</div>`; // Fim do container
+            html += `</div></div>`; // End chart area
+            html += `<div class="flex pl-10 pt-2"><div class="grid grid-cols-12 w-full">${chartData.map(item => `<div class="text-center text-xs text-gray-500"><div>${item.label}</div><div class="text-gray-400">(${item.totalCount})</div></div>`).join('')}</div></div>`;
+            html += `</div>`; // End container
             return html;
         };
         
-        const renderDelayDistributionDetailView = (delayRange, detailData) => {
-            const dataForRange = detailData[delayRange];
+        const renderDelayDistributionDetailView = (delayRange) => {
+            const data = getFilteredData();
+            const metrics = calculateMetrics(data);
+            const dataForRange = metrics.carrierPerformanceByDelayRange[delayRange];
 
             if (!dataForRange || Object.keys(dataForRange).length === 0) {
-                return `
-                <div class="bg-white p-6 rounded-lg shadow-md col-span-1 lg:col-span-2">
-                    <button id="back-to-dashboard" class="mb-4 bg-blue-500 text-white font-bold py-2 px-4 rounded-md hover:bg-blue-600 transition-colors">&larr; Voltar</button>
-                    <h3 class="text-lg font-semibold mb-4 text-gray-700">Detalhes para a Faixa de Atraso: <span class="text-blue-600">${delayRange}</span></h3>
-                    <p class="text-gray-500">Nenhuma transportadora encontrada para esta faixa de atraso.</p>
-                </div>`;
+                return `<div class="bg-white p-6 rounded-lg shadow-md"><h3 class="text-lg font-semibold mb-4 text-gray-700">Detalhes para a Faixa de Atraso: <span class="text-blue-600">${delayRange}</span></h3><p class="text-gray-500">Nenhuma transportadora encontrada para esta faixa de atraso.</p></div>`;
             }
 
             const totalOccurrences = Object.values(dataForRange).reduce((a, b) => a + b, 0);
@@ -558,120 +626,30 @@
                 .map(([carrier, count]) => ({ label: carrier, count }))
                 .sort((a, b) => b.count - a.count);
 
-            return `
-                <div class="bg-white p-6 rounded-lg shadow-md col-span-1 lg:col-span-2">
-                    <button id="back-to-dashboard" class="mb-4 bg-blue-500 text-white font-bold py-2 px-4 rounded-md hover:bg-blue-600 transition-colors">&larr; Voltar</button>
-                    <h3 class="text-lg font-semibold mb-4 text-gray-700">Detalhes para a Faixa de Atraso: <span class="text-blue-600">${delayRange}</span></h3>
-                    <div class="overflow-x-auto">
-                        <table class="min-w-full divide-y divide-gray-200">
-                            <thead class="bg-gray-50">
+            return `<div class="bg-white p-6 rounded-lg shadow-md">
+                <h3 class="text-lg font-semibold mb-4 text-gray-700">Transportadoras com Atraso de <span class="text-blue-600">${delayRange}</span></h3>
+                <div class="overflow-x-auto">
+                    <table class="min-w-full divide-y divide-gray-200">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Transportadora</th>
+                                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Ocorrências de Atraso</th>
+                                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">% do Total</th>
+                            </tr>
+                        </thead>
+                        <tbody class="bg-white divide-y divide-gray-200">
+                            ${tableData.map(item => `
                                 <tr>
-                                    <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Transportadora</th>
-                                    <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Ocorrências de Atraso</th>
-                                    <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Percentual do Total</th>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">${item.label}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${item.count}</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${((item.count / totalOccurrences) * 100).toFixed(2)}%</td>
                                 </tr>
-                            </thead>
-                            <tbody class="bg-white divide-y divide-gray-200">
-                                ${tableData.map(item => `
-                                    <tr>
-                                        <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">${item.label}</td>
-                                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${item.count}</td>
-                                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${((item.count / totalOccurrences) * 100).toFixed(2)}%</td>
-                                    </tr>
-                                `).join('')}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>`;
+                            `).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            </div>`;
         };
-
-        const renderDelayByRegionChart = (id, chartData, title, isClickable = false) => {
-             const chartDataArray = Object.entries(chartData).map(([label, data]) => ({ label, ...data }));
-             if (!chartDataArray || chartDataArray.length === 0) {
-                return `<div id="${id}" class="bg-white p-6 rounded-lg shadow-md"><h3 class="text-lg font-semibold mb-4 text-gray-700">${title}</h3><p class="text-gray-500">Não há dados de atraso para exibir.</p></div>`;
-            }
-            const maxValue = Math.max(...chartDataArray.map(item => item.total));
-             const delayColors = {
-                "1 dia": "bg-yellow-300",
-                "2 a 3 dias": "bg-yellow-500",
-                "4 a 5 dias": "bg-orange-500",
-                "6 dias ou mais": "bg-red-500",
-            };
-            const delayRanges = ["1 dia", "2 a 3 dias", "4 a 5 dias", "6 dias ou mais"];
-
-            return `
-                <div id="${id}" class="bg-white p-6 rounded-lg shadow-md col-span-1 lg:col-span-2">
-                    <h3 class="text-lg font-semibold mb-4 text-gray-700">${title} (Clique para detalhar)</h3>
-                    <div class="space-y-4">
-                        ${chartDataArray.map(item => `
-                            <div data-label="${item.label}" class="flex items-center group ${isClickable ? 'cursor-pointer clickable-bar' : ''}">
-                                <p class="w-1/4 text-sm text-gray-600 truncate pr-2">${item.label}</p>
-                                <div class="w-3/4 bg-gray-200 rounded-full h-6 flex">
-                                    ${delayRanges.map(range => {
-                                        const count = item.ranges ? item.ranges[range] || 0 : 0;
-                                        const percentage = (item.total > 0 ? (count / item.total) * 100 : 0);
-                                        return `<div class="${delayColors[range]}" style="width: ${percentage}%" title="${range}: ${count}"></div>`;
-                                    }).join('')}
-                                </div>
-                            </div>
-                        `).join('')}
-                    </div>
-                     <div class="flex flex-wrap justify-center gap-x-4 gap-y-2 mt-6">
-                        ${delayRanges.map(range => `
-                            <div class="flex items-center">
-                                <span class="w-3 h-3 rounded-full ${delayColors[range]} mr-2"></span>
-                                <span class="text-sm text-gray-600">${range}</span>
-                            </div>
-                        `).join('')}
-                    </div>
-                </div>`;
-        };
-        
-        const renderDelayByRegionDetailView = (regionName, detailData) => {
-            const dataForRegion = detailData[regionName];
-            const delayRanges = ["1 dia", "2 a 3 dias", "4 a 5 dias", "6 dias ou mais"];
-
-            if (!dataForRegion || Object.keys(dataForRegion).length === 0) {
-                return `
-                <div class="bg-white p-6 rounded-lg shadow-md col-span-1 lg:col-span-2">
-                    <button id="back-to-dashboard" class="mb-4 bg-blue-500 text-white font-bold py-2 px-4 rounded-md hover:bg-blue-600 transition-colors">&larr; Voltar</button>
-                    <h3 class="text-lg font-semibold mb-4 text-gray-700">Detalhes de Atraso por Transportadora na Região: <span class="text-blue-600">${regionName}</span></h3>
-                    <p class="text-gray-500">Nenhuma transportadora com atraso encontrada para esta região.</p>
-                </div>`;
-            }
-            
-            const tableData = Object.entries(dataForRegion).map(([carrier, ranges]) => {
-                const total = Object.values(ranges).reduce((a,b) => a + b, 0);
-                return { label: carrier, ranges, total };
-            }).sort((a,b) => b.total - a.total);
-
-            return `
-                <div class="bg-white p-6 rounded-lg shadow-md col-span-1 lg:col-span-2">
-                    <button id="back-to-dashboard" class="mb-4 bg-blue-500 text-white font-bold py-2 px-4 rounded-md hover:bg-blue-600 transition-colors">&larr; Voltar</button>
-                    <h3 class="text-lg font-semibold mb-4 text-gray-700">Detalhes de Atraso por Transportadora na Região: <span class="text-blue-600">${regionName}</span></h3>
-                    <div class="overflow-x-auto">
-                        <table class="min-w-full divide-y divide-gray-200">
-                            <thead class="bg-gray-50">
-                                <tr>
-                                    <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Transportadora</th>
-                                    ${delayRanges.map(range => `<th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">${range}</th>`).join('')}
-                                    <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Total</th>
-                                </tr>
-                            </thead>
-                            <tbody class="bg-white divide-y divide-gray-200">
-                                ${tableData.map(item => `
-                                    <tr>
-                                        <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">${item.label}</td>
-                                        ${delayRanges.map(range => `<td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${item.ranges[range] || 0}</td>`).join('')}
-                                        <td class="px-6 py-4 whitespace-nowrap text-sm font-bold text-gray-900">${item.total}</td>
-                                    </tr>
-                                `).join('')}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>`;
-
-        }
 
         const renderSingleMetricChart = (monthlyData, title, metricKey, year, target) => {
             const months = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
@@ -681,47 +659,35 @@
                  return `<div class="bg-white p-6 rounded-lg shadow-md"><h3 class="text-lg font-semibold mb-4 text-gray-700">${title} (${year})</h3><p class="text-gray-500">Nenhum dado para exibir.</p></div>`;
             }
             
-            let html = `
-                <div class="bg-white p-6 rounded-lg shadow-md">
-                    <h3 class="text-lg font-semibold mb-4 text-gray-700">${title} (${year})</h3>
-                    <div class="relative flex" style="height: 250px;">
-                        <div class="relative w-12 flex-shrink-0 pr-2 text-xs text-right text-gray-500 h-full pb-5 border-r border-gray-200">
-                             <span class="absolute right-2" style="bottom: 100%; transform: translateY(50%);">100%</span>
-                            <span class="absolute right-2" style="bottom: 75%; transform: translateY(50%);">75%</span>
-                            <span class="absolute right-2" style="bottom: 50%; transform: translateY(50%);">50%</span>
-                            <span class="absolute right-2" style="bottom: 25%; transform: translateY(50%);">25%</span>
-                            <span class="absolute right-2 bottom-0">0%</span>
-                        </div>
-                        <div class="flex-1 grid pl-2 border-b border-gray-200 relative" style="grid-template-columns: repeat(${visibleData.length}, minmax(0, 1fr));">
-                            <div class="absolute top-0 w-full z-10" style="bottom: ${target}%;">
-                                <div class="border-t-2 border-dashed border-red-500 h-0"></div>
-                                <span class="absolute -top-2.5 right-0 text-xs text-red-500 font-bold bg-white px-1">${target}%</span>
-                            </div>
-                        `;
+            let html = `<div class="bg-white p-6 rounded-lg shadow-md">
+                <h3 class="text-lg font-semibold mb-4 text-gray-700">${title} (${year})</h3>
+                <div class="relative flex" style="height: 250px;">
+                    <div class="relative w-12 flex-shrink-0 pr-2 text-xs text-right text-gray-500 h-full pb-5 border-r border-gray-200">
+                         <span class="absolute right-2" style="bottom: 100%; transform: translateY(50%);">100%</span>
+                        <span class="absolute right-2" style="bottom: 75%; transform: translateY(50%);">75%</span>
+                        <span class="absolute right-2" style="bottom: 50%; transform: translateY(50%);">50%</span>
+                        <span class="absolute right-2" style="bottom: 25%; transform: translateY(50%);">25%</span>
+                        <span class="absolute right-2 bottom-0">0%</span>
+                    </div>
+                    <div class="flex-1 grid pl-2 border-b border-gray-200 relative" style="grid-template-columns: repeat(${visibleData.length}, minmax(0, 1fr));">
+                        <div class="absolute top-0 w-full z-10" style="bottom: ${target}%;">
+                            <div class="border-t-2 border-dashed border-red-500 h-0"></div>
+                            <span class="absolute -top-2.5 right-0 text-xs text-red-500 font-bold bg-white px-1">${target}%</span>
+                        </div>`;
 
             visibleData.forEach(monthData => {
                 const value = monthData[metricKey];
                 html += `<div class="relative flex justify-center items-end h-full px-1 group">`;
                 if (value !== undefined) {
-                     html += `
-                        <div class="absolute text-center w-full text-xs font-bold text-gray-800" style="bottom: calc(${value}% + 4px);">
-                           ${value.toFixed(1)}%
-                        </div>
-                        <div class="${getOtifColorClass(value)} w-3/4" style="height: ${value}%;"></div>`;
+                    html += `<div class="absolute text-center w-full text-xs font-bold text-gray-800" style="bottom: calc(${value}% + 4px);">${value.toFixed(1)}%</div>
+                           <div class="${getOtifColorClass(value)} w-3/4" style="height: ${value}%;"></div>`;
                 }
                 html += `</div>`;
             });
             
-            html += `</div></div>`; // Fim da área do gráfico
-            
-            // Eixo X
-            html += `<div class="flex pl-12 pt-2">
-                        <div class="grid w-full" style="grid-template-columns: repeat(${visibleData.length}, minmax(0, 1fr));">
-                            ${visibleData.map(m => `<div class="text-center text-xs text-gray-500"><div>${months[new Date(m.month + '-02').getMonth()]}</div><div class="text-gray-400">(${m.totalCount})</div></div>`).join('')}
-                        </div>
-                     </div>`;
-
-            html += `</div>`; // Fim do container
+            html += `</div></div>`; // End chart area
+            html += `<div class="flex pl-12 pt-2"><div class="grid w-full" style="grid-template-columns: repeat(${visibleData.length}, minmax(0, 1fr));">${visibleData.map(m => `<div class="text-center text-xs text-gray-500"><div>${months[new Date(m.month + '-02').getMonth()]}</div><div class="text-gray-400">(${m.totalCount})</div></div>`).join('')}</div></div>`;
+            html += `</div>`; // End container
             return html;
         };
 
@@ -734,14 +700,16 @@
             }
             if (String(rowDateStr).includes('/')) { // Formato DD/MM/YYYY
                 const parts = rowDateStr.split('/');
-                return new Date(`${parts[2]}-${parts[1]}-${parts[0]}T00:00:00`);
+                if (parts.length === 3) {
+                    return new Date(`${parts[2]}-${parts[1]}-${parts[0]}T00:00:00`);
+                }
             }
-            // Formato YYYY-MM-DD
+            // Formato YYYY-MM-DD ou outro que o construtor Date entenda
             return new Date(rowDateStr + 'T00:00:00');
         };
-
-        const calculateMetrics = () => {
-             const filteredData = allData.filter(row => {
+        
+        const getFilteredData = () => {
+            return allData.filter(row => {
                 const rowDateStr = row['Data Pedido'];
                 if (!rowDateStr) return false; 
                 
@@ -756,14 +724,18 @@
                 
                 return true;
             });
+        }
 
-            const processedData = filteredData.map(row => {
+        const calculateMetrics = (data) => {
+             const sourceData = data || getFilteredData();
+
+            const processedData = sourceData.map(row => {
                 const isOnTime = row['Status Entrega'] !== 'Fora do Prazo';
                 const isInFull = !row['Entrega divergente?'] || String(row['Entrega divergente?']).toLowerCase() !== 'sim';
                 return { ...row, isOnTime, isInFull };
             });
 
-            const totalDeliveries = filteredData.length;
+            const totalDeliveries = processedData.length;
             const otifCount = processedData.filter(d => d.isOnTime && d.isInFull).length;
             const onTimeCount = processedData.filter(d => d.isOnTime).length;
             const inFullCount = processedData.filter(d => d.isInFull).length;
@@ -772,86 +744,38 @@
             const onTimeRate = totalDeliveries > 0 ? (onTimeCount / totalDeliveries) * 100 : 0;
             const inFullRate = totalDeliveries > 0 ? (inFullCount / totalDeliveries) * 100 : 0;
 
-            const byCarrier = processedData.reduce((acc, curr) => {
-                const carrier = curr['TRANSPORTADORA'];
-                if (!carrier) return acc;
-                if (!acc[carrier]) acc[carrier] = { total: 0, otif: 0 };
-                acc[carrier].total++;
-                if (curr.isOnTime && curr.isInFull) acc[carrier].otif++;
-                return acc;
-            }, {});
-            const carrierPerformance = Object.entries(byCarrier).map(([label, values]) => ({
-                label, 
-                value: (values.otif / values.total) * 100,
-                totalCount: values.total
-            })).sort((a, b) => b.value - a.value);
-
-            const byRegion = processedData.reduce((acc, curr) => {
-                const region = curr['Região'];
-                if (!region) return acc;
-                if (!acc[region]) acc[region] = { total: 0, otif: 0 };
-                acc[region].total++;
-                if (curr.isOnTime && curr.isInFull) acc[region].otif++;
-                return acc;
-            }, {});
-            const regionPerformance = Object.entries(byRegion).map(([label, values]) => ({
-                label,
-                value: (values.otif / values.total) * 100,
-                totalCount: values.total
-            })).sort((a, b) => b.value - a.value);
-
-            const delayReasons = processedData.filter(row => !row.isOnTime && row['Motivos']).reduce((acc, curr) => {
-                const reason = curr['Motivos'];
-                acc[reason] = (acc[reason] || 0) + 1;
-                return acc;
-            }, {});
-            const topDelayReasons = Object.entries(delayReasons).map(([reason, count]) => ({ reason, count })).sort((a, b) => b.count - a.count);
-            
-            const discrepancyReasons = processedData.filter(row => !row.isInFull && row['Divergência']).reduce((acc, curr) => {
-                const reason = curr['Divergência'];
-                acc[reason] = (acc[reason] || 0) + 1;
-                return acc;
-            }, {});
-            const topDiscrepancyReasons = Object.entries(discrepancyReasons).map(([reason, count]) => ({ reason, count })).sort((a, b) => b.count - a.count);
-            
-            const performanceByStateInRegion = processedData.reduce((acc, curr) => {
-                const region = curr['Região'];
-                const state = curr['UF'];
-                if (!region || !state) return acc;
-                if (!acc[region]) acc[region] = {};
-                if (!acc[region][state]) acc[region][state] = { total: 0, otif: 0 };
-                acc[region][state].total++;
-                if (curr.isOnTime && curr.isInFull) acc[region][state].otif++;
-                return acc;
-            }, {});
-
-            Object.keys(performanceByStateInRegion).forEach(region => {
-                performanceByStateInRegion[region] = Object.entries(performanceByStateInRegion[region]).map(([label, values]) => ({
-                    label,
+            const createPerformanceMetric = (key) => {
+                const byKey = processedData.reduce((acc, curr) => {
+                    const label = curr[key];
+                    if (!label) return acc;
+                    if (!acc[label]) acc[label] = { total: 0, otif: 0 };
+                    acc[label].total++;
+                    if (curr.isOnTime && curr.isInFull) acc[label].otif++;
+                    return acc;
+                }, {});
+                return Object.entries(byKey).map(([label, values]) => ({
+                    label, 
                     value: (values.otif / values.total) * 100,
                     totalCount: values.total
-                })).sort((a,b) => b.value - a.value);
-            });
+                })).sort((a, b) => b.totalCount - a.totalCount);
+            };
 
-            const performanceByCarrierInState = processedData.reduce((acc, curr) => {
-                const state = curr['UF'];
-                const carrier = curr['TRANSPORTADORA'];
-                if (!state || !carrier) return acc;
-                if (!acc[state]) acc[state] = {};
-                if (!acc[state][carrier]) acc[state][carrier] = { total: 0, otif: 0 };
-                acc[state][carrier].total++;
-                if (curr.isOnTime && curr.isInFull) acc[state][carrier].otif++;
-                return acc;
-            }, {});
-
-            Object.keys(performanceByCarrierInState).forEach(state => {
-                performanceByCarrierInState[state] = Object.entries(performanceByCarrierInState[state]).map(([label, values]) => ({
-                    label,
-                    value: (values.otif / values.total) * 100,
-                    totalCount: values.total
-                })).sort((a,b) => b.value - a.value);
-            });
+            const carrierPerformance = createPerformanceMetric('TRANSPORTADORA');
+            const regionPerformance = createPerformanceMetric('Região');
+            const statePerformance = createPerformanceMetric('UF');
             
+            const createReasonMetric = (filterFn, reasonKey) => {
+                const reasons = processedData.filter(filterFn).reduce((acc, curr) => {
+                    const reason = curr[reasonKey];
+                    if(reason) acc[reason] = (acc[reason] || 0) + 1;
+                    return acc;
+                }, {});
+                return Object.entries(reasons).map(([reason, count]) => ({ reason, count })).sort((a, b) => b.count - a.count);
+            }
+
+            const topDelayReasons = createReasonMetric(row => !row.isOnTime, 'Motivos');
+            const topDiscrepancyReasons = createReasonMetric(row => !row.isInFull, 'Divergência');
+
             const carrierPerformanceByReason = { delay: {}, discrepancy: {} };
             processedData.forEach(row => {
                 const carrier = row['TRANSPORTADORA'];
@@ -868,209 +792,95 @@
                 }
             });
 
-
-            // --- LÓGICA DO HISTÓRICO ---
-            const latestYear = allData.length > 0 ? Math.max(...allData.map(r => parseDate(r['Data Pedido']).getFullYear()).filter(y => !isNaN(y))) : new Date().getFullYear();
-            const yearData = allData.filter(row => {
-                const rowDate = parseDate(row['Data Pedido']);
-                return rowDate && !isNaN(rowDate.getTime()) && rowDate.getFullYear() === latestYear;
-            });
-
-            const monthlyPerformanceData = yearData.reduce((acc, curr) => {
+            // --- LÓGICA DO HISTÓRICO MENSAL ---
+            const latestYear = processedData.length > 0 ? Math.max(...processedData.map(r => parseDate(r['Data Pedido']).getFullYear()).filter(y => !isNaN(y))) : new Date().getFullYear();
+            
+            const monthlyPerformanceData = processedData.filter(row => parseDate(row['Data Pedido']).getFullYear() === latestYear)
+                .reduce((acc, curr) => {
                 const rowDate = parseDate(curr['Data Pedido']);
                 if (isNaN(rowDate.getTime())) return acc;
-
                 const monthKey = `${rowDate.getFullYear()}-${String(rowDate.getMonth() + 1).padStart(2, '0')}`;
-                const isOnTime = curr['Status Entrega'] !== 'Fora do Prazo';
-                const isInFull = !curr['Entrega divergente?'] || String(curr['Entrega divergente?']).toLowerCase() !== 'sim';
-                
                 if (!acc[monthKey]) acc[monthKey] = { total: 0, otifCount: 0, onTimeCount: 0, inFullCount: 0 };
                 
                 acc[monthKey].total++;
-                if(isOnTime) acc[monthKey].onTimeCount++;
-                if(isInFull) acc[monthKey].inFullCount++;
-                if (isOnTime && isInFull) acc[monthKey].otifCount++;
-                
+                if(curr.isOnTime) acc[monthKey].onTimeCount++;
+                if(curr.isInFull) acc[monthKey].inFullCount++;
+                if (curr.isOnTime && curr.isInFull) acc[monthKey].otifCount++;
                 return acc;
             }, {});
 
             const monthlyPerformance = Array.from({ length: 12 }).map((_, index) => {
                 const monthKey = `${latestYear}-${String(index + 1).padStart(2, '0')}`;
                 const data = monthlyPerformanceData[monthKey];
-                if (data && data.total > 0) {
-                    return {
-                        month: monthKey,
-                        otifRate: (data.otifCount / data.total) * 100,
-                        onTimeRate: (data.onTimeCount / data.total) * 100,
-                        inFullRate: (data.inFullCount / data.total) * 100,
-                        totalCount: data.total
-                    };
-                }
-                return {
+                return data && data.total > 0 ? {
                     month: monthKey,
-                    otifRate: undefined,
-                    onTimeRate: undefined,
-                    inFullRate: undefined,
-                    totalCount: 0
-                };
+                    otifRate: (data.otifCount / data.total) * 100,
+                    onTimeRate: (data.onTimeCount / data.total) * 100,
+                    inFullRate: (data.inFullCount / data.total) * 100,
+                    totalCount: data.total
+                } : { month: monthKey, otifRate: undefined, onTimeRate: undefined, inFullRate: undefined, totalCount: 0 };
             });
 
-            const historicalCarrierOtif = yearData.reduce((acc, curr) => {
+            const historicalCarrierOtif = processedData.filter(row => parseDate(row['Data Pedido']).getFullYear() === latestYear)
+                .reduce((acc, curr) => {
                 const carrier = curr['TRANSPORTADORA'];
                 const rowDate = parseDate(curr['Data Pedido']);
                 if (!carrier || isNaN(rowDate.getTime())) return acc;
 
                 const month = `${rowDate.getFullYear()}-${String(rowDate.getMonth() + 1).padStart(2, '0')}`;
-                const isOnTime = curr['Status Entrega'] !== 'Fora do Prazo';
-                const isInFull = !curr['Entrega divergente?'] || String(curr['Entrega divergente?']).toLowerCase() !== 'sim';
-
                 if (!acc[carrier]) acc[carrier] = {};
                 if (!acc[carrier][month]) acc[carrier][month] = { total: 0, otifCount: 0 };
 
                 acc[carrier][month].total++;
-                if (isOnTime && isInFull) acc[carrier][month].otifCount++;
+                if (curr.isOnTime && curr.isInFull) acc[carrier][month].otifCount++;
                 
                 return acc;
             }, {});
             Object.keys(historicalCarrierOtif).forEach(carrier => {
                 Object.keys(historicalCarrierOtif[carrier]).forEach(month => {
                     const { total, otifCount } = historicalCarrierOtif[carrier][month];
-                    historicalCarrierOtif[carrier][month] = {
-                        value: (otifCount / total) * 100,
-                        totalCount: total,
-                    };
+                    historicalCarrierOtif[carrier][month] = { value: (otifCount / total) * 100, totalCount: total };
                 });
             });
 
-            const delayDistribution = {
-                "1 dia": 0,
-                "2 a 3 dias": 0,
-                "4 a 5 dias": 0,
-                "6 dias ou mais": 0,
-            };
+            const delayDistribution = { "1 dia": 0, "2 a 3 dias": 0, "4 a 5 dias": 0, "6 dias ou mais": 0 };
+            const carrierPerformanceByDelayRange = { "1 dia": {}, "2 a 3 dias": {}, "4 a 5 dias": {}, "6 dias ou mais": {} };
 
-            filteredData.forEach(row => { // Changed to filteredData
-                const status = row['Status Entrega'];
-                if (status === 'Fora do Prazo') {
-                    const diasAtraso = parseInt(row['DIAS ATRASOS ÚTEIS'], 10);
-                    if (!isNaN(diasAtraso)) {
-                        if (diasAtraso === 1) {
-                            delayDistribution["1 dia"]++;
-                        } else if (diasAtraso >= 2 && diasAtraso <= 3) {
-                            delayDistribution["2 a 3 dias"]++;
-                        } else if (diasAtraso >= 4 && diasAtraso <= 5) {
-                            delayDistribution["4 a 5 dias"]++;
-                        } else if (diasAtraso >= 6) {
-                            delayDistribution["6 dias ou mais"]++;
-                        }
-                    }
-                }
-            });
-
-            const delayDistributionData = Object.entries(delayDistribution).map(([label, count]) => ({
-                label,
-                value: count
-            }));
-            
-            const carrierPerformanceByDelayRange = {
-                "1 dia": {},
-                "2 a 3 dias": {},
-                "4 a 5 dias": {},
-                "6 dias ou mais": {},
-            };
-            
-            filteredData.forEach(row => {
-                const status = row['Status Entrega'];
-                if (status === 'Fora do Prazo') {
+            processedData.forEach(row => {
+                if (!row.isOnTime) {
                     const diasAtraso = parseInt(row['DIAS ATRASOS ÚTEIS'], 10);
                     const carrier = row['TRANSPORTADORA'];
-                    if (!isNaN(diasAtraso) && carrier) {
+                    if (!isNaN(diasAtraso)) {
                         let range = null;
                         if (diasAtraso === 1) range = "1 dia";
                         else if (diasAtraso >= 2 && diasAtraso <= 3) range = "2 a 3 dias";
                         else if (diasAtraso >= 4 && diasAtraso <= 5) range = "4 a 5 dias";
                         else if (diasAtraso >= 6) range = "6 dias ou mais";
-
                         if (range) {
-                            if (!carrierPerformanceByDelayRange[range][carrier]) {
-                                carrierPerformanceByDelayRange[range][carrier] = 0;
+                            delayDistribution[range]++;
+                            if (carrier) {
+                                if (!carrierPerformanceByDelayRange[range][carrier]) carrierPerformanceByDelayRange[range][carrier] = 0;
+                                carrierPerformanceByDelayRange[range][carrier]++;
                             }
-                            carrierPerformanceByDelayRange[range][carrier]++;
                         }
                     }
                 }
             });
 
-            const delayDistributionByRegion = filteredData.reduce((acc, row) => {
-                const status = row['Status Entrega'];
-                const region = row['Região'];
-
-                if (status === 'Fora do Prazo' && region) {
-                    const diasAtraso = parseInt(row['DIAS ATRASOS ÚTEIS'], 10);
-                    if (!isNaN(diasAtraso)) {
-                        let range = null;
-                        if (diasAtraso === 1) range = "1 dia";
-                        else if (diasAtraso >= 2 && diasAtraso <= 3) range = "2 a 3 dias";
-                        else if (diasAtraso >= 4 && diasAtraso <= 5) range = "4 a 5 dias";
-                        else if (diasAtraso >= 6) range = "6 dias ou mais";
-
-                        if (range) {
-                            if (!acc[region]) {
-                                acc[region] = { ranges: { "1 dia": 0, "2 a 3 dias": 0, "4 a 5 dias": 0, "6 dias ou mais": 0 }, total: 0 };
-                            }
-                            acc[region].ranges[range]++;
-                            acc[region].total++;
-                        }
-                    }
-                }
-                return acc;
-            }, {});
-
-             const carrierPerformanceByRegionAndDelay = filteredData.reduce((acc, row) => {
-                const status = row['Status Entrega'];
-                const region = row['Região'];
-                const carrier = row['TRANSPORTADORA'];
-
-                if (status === 'Fora do Prazo' && region && carrier) {
-                    const diasAtraso = parseInt(row['DIAS ATRASOS ÚTEIS'], 10);
-                    if (!isNaN(diasAtraso)) {
-                         let range = null;
-                        if (diasAtraso === 1) range = "1 dia";
-                        else if (diasAtraso >= 2 && diasAtraso <= 3) range = "2 a 3 dias";
-                        else if (diasAtraso >= 4 && diasAtraso <= 5) range = "4 a 5 dias";
-                        else if (diasAtraso >= 6) range = "6 dias ou mais";
-
-                        if (range) {
-                            if (!acc[region]) acc[region] = {};
-                            if (!acc[region][carrier]) acc[region][carrier] = { "1 dia": 0, "2 a 3 dias": 0, "4 a 5 dias": 0, "6 dias ou mais": 0 };
-                            acc[region][carrier][range]++;
-                        }
-                    }
-                }
-                return acc;
-            }, {});
-
+            const delayDistributionData = Object.entries(delayDistribution).map(([label, count]) => ({ label, value: count }));
 
             return { 
-                totalDeliveries, otifRate, onTimeRate, inFullRate, carrierPerformance, regionPerformance, 
-                topDelayReasons, totalCategorizedDelays: onTimeCount,
-                topDiscrepancyReasons, totalCategorizedDiscrepancies: inFullCount, 
-                performanceByStateInRegion,
-                performanceByCarrierInState,
-                carrierPerformanceByReason,
-                historicalCarrierOtif,
-                monthlyPerformance,
-                yearForHistory: latestYear,
-                delayDistributionData,
-                carrierPerformanceByDelayRange,
-                delayDistributionByRegion,
-                carrierPerformanceByRegionAndDelay,
+                totalDeliveries, otifRate, onTimeRate, inFullRate, carrierPerformance, regionPerformance, statePerformance,
+                topDelayReasons, totalDelayed: totalDeliveries - onTimeCount,
+                topDiscrepancyReasons, totalDiscrepancy: totalDeliveries - inFullCount,
+                carrierPerformanceByReason, historicalCarrierOtif, monthlyPerformance, yearForHistory: latestYear,
+                delayDistributionData, carrierPerformanceByDelayRange,
             };
         };
 
         const processFile = async (file) => {
              if (!file) return;
-        
+            
             importError.textContent = '';
             if (loadedFiles.some(f => f.name === file.name)) {
                 importError.textContent = `O ficheiro "${file.name}" já foi importado.`;
@@ -1084,35 +894,35 @@
                 try {
                     let rawData = [];
                      if (fileExtension === 'csv') {
-                        const text = e.target.result;
-                        const lines = text.trim().split(/\r?\n/);
-                        const headers = lines[0].split(',').map(h => h.trim().replace(/"/g, ''));
-                        rawData = lines.slice(1).map(line => {
-                            const values = line.split(',');
-                            return headers.reduce((obj, header, index) => {
-                                obj[header] = values[index] ? values[index].trim().replace(/"/g, '') : '';
-                                return obj;
-                            }, {});
-                        });
-                    } else if (fileExtension === 'xlsx') {
-                        if (typeof XLSX === 'undefined') {
-                           importError.textContent = 'A biblioteca de leitura de planilhas (XLSX) não pôde ser carregada.';
-                           return;
-                        }
-                        const data = new Uint8Array(e.target.result);
-                        const workbook = XLSX.read(data, { type: 'array' });
-                        const sheetName = workbook.SheetNames[0];
-                        const worksheet = workbook.Sheets[sheetName];
-                        rawData = XLSX.utils.sheet_to_json(worksheet);
-                    } else {
-                        importError.textContent = 'Formato de ficheiro não suportado. Use .csv ou .xlsx';
-                        return;
-                    }
+                         const text = e.target.result;
+                         const lines = text.trim().split(/\r?\n/);
+                         const headers = lines[0].split(',').map(h => h.trim().replace(/"/g, ''));
+                         rawData = lines.slice(1).map(line => {
+                             const values = line.split(',');
+                             return headers.reduce((obj, header, index) => {
+                                 obj[header] = values[index] ? values[index].trim().replace(/"/g, '') : '';
+                                 return obj;
+                             }, {});
+                         });
+                     } else if (fileExtension === 'xlsx') {
+                         if (typeof XLSX === 'undefined') {
+                            importError.textContent = 'A biblioteca de leitura de planilhas (XLSX) não pôde ser carregada.';
+                            return;
+                         }
+                         const data = new Uint8Array(e.target.result);
+                         const workbook = XLSX.read(data, { type: 'array' });
+                         const sheetName = workbook.SheetNames[0];
+                         const worksheet = workbook.Sheets[sheetName];
+                         rawData = XLSX.utils.sheet_to_json(worksheet);
+                     } else {
+                         importError.textContent = 'Formato de ficheiro não suportado. Use .csv ou .xlsx';
+                         return;
+                     }
                     
-                    if(rawData.length > 0 && !rawData[0]['Data Pedido']){
-                        importError.textContent = "A coluna 'Data Pedido' é necessária e não foi encontrada.";
-                        return;
-                    }
+                     if(rawData.length > 0 && !rawData[0]['Data Pedido']){
+                         importError.textContent = "A coluna 'Data Pedido' é necessária e não foi encontrada.";
+                         return;
+                     }
 
                     showLoading(`A guardar ${rawData.length.toLocaleString('pt-BR')} linhas...`);
 
@@ -1136,7 +946,7 @@
                     switchView('dashboard');
                     renderDashboard();
                 } catch (err) {
-                     importError.textContent = 'Ocorreu um erro ao processar o ficheiro.';
+                    importError.textContent = 'Ocorreu um erro ao processar o ficheiro.';
                      console.error(err);
                 } finally {
                     hideLoading();
@@ -1153,78 +963,94 @@
         };
         
         const removeFile = async (fileNameToRemove) => {
-            try {
-                if (isDbAvailable) {
-                    showLoading(`A remover o ficheiro ${fileNameToRemove}...`);
-                    const db = await dbPromise;
-                    
-                    const dataTx = db.transaction(DATA_STORE, 'readwrite');
-                    const dataStore = dataTx.objectStore(DATA_STORE);
-                    const dataIndex = dataStore.index('fileName');
-                    const request = dataIndex.openCursor(IDBKeyRange.only(fileNameToRemove));
-                    
-                    request.onsuccess = event => {
-                        const cursor = event.target.result;
-                        if(cursor){
-                            cursor.delete();
-                            cursor.continue();
+            showModal(
+                `Remover "${fileNameToRemove}"?`,
+                'Os dados deste ficheiro serão removidos permanentemente. Esta ação é irreversível.',
+                async () => {
+                    try {
+                        if (isDbAvailable) {
+                            showLoading(`A remover o ficheiro ${fileNameToRemove}...`);
+                            const db = await dbPromise;
+                            
+                            const dataTx = db.transaction(DATA_STORE, 'readwrite');
+                            const dataStore = dataTx.objectStore(DATA_STORE);
+                            const dataIndex = dataStore.index('fileName');
+                            const request = dataIndex.openCursor(IDBKeyRange.only(fileNameToRemove));
+                            
+                            request.onsuccess = event => {
+                                const cursor = event.target.result;
+                                if(cursor){
+                                    cursor.delete();
+                                    cursor.continue();
+                                }
+                            };
+                            await new Promise(resolve => dataTx.oncomplete = resolve);
+
+                            const fileTx = db.transaction(FILE_STORE, 'readwrite');
+                            fileTx.objectStore(FILE_STORE).delete(fileNameToRemove);
+                            await new Promise(resolve => fileTx.oncomplete = resolve);
                         }
-                    };
-                    await new Promise(resolve => dataTx.oncomplete = resolve);
 
-                    const fileTx = db.transaction(FILE_STORE, 'readwrite');
-                    fileTx.objectStore(FILE_STORE).delete(fileNameToRemove);
-                    await new Promise(resolve => fileTx.oncomplete = resolve);
+                        allData = allData.filter(row => row.fileName !== fileNameToRemove);
+                        loadedFiles = loadedFiles.filter(file => file.name !== fileNameToRemove);
+
+                        renderLoadedFiles();
+                        renderDashboard();
+                    } catch (e) {
+                        importError.textContent = "Erro ao remover o ficheiro.";
+                        console.error(e);
+                    } finally {
+                        hideLoading();
+                    }
                 }
-
-                allData = allData.filter(row => row.fileName !== fileNameToRemove);
-                loadedFiles = loadedFiles.filter(file => file.name !== fileNameToRemove);
-
-                renderLoadedFiles();
-                renderDashboard();
-            } catch (e) {
-                importError.textContent = "Erro ao remover o ficheiro.";
-                console.error(e);
-            } finally {
-                hideLoading();
-            }
+            );
         };
 
         const clearAllData = async () => {
-            const confirmed = confirm("Tem a certeza que deseja limpar todo o histórico? Esta ação é irreversível.");
-            if (!confirmed) return;
+            showModal(
+                'Limpar todo o histórico?',
+                'Esta ação removerá todos os ficheiros e dados importados. Esta ação é irreversível.',
+                async () => {
+                     try {
+                         if (isDbAvailable) {
+                             showLoading('A limpar todo o histórico...');
+                             const db = await dbPromise;
+                             
+                             const dataTx = db.transaction(DATA_STORE, 'readwrite');
+                             dataTx.objectStore(DATA_STORE).clear();
+                             await new Promise(resolve => dataTx.oncomplete = resolve);
+                             
+                             const fileTx = db.transaction(FILE_STORE, 'readwrite');
+                             fileTx.objectStore(FILE_STORE).clear();
+                             await new Promise(resolve => fileTx.oncomplete = resolve);
+                         }
 
-            try {
-                 if (isDbAvailable) {
-                    showLoading('A limpar todo o histórico...');
-                    const db = await dbPromise;
-                    
-                    const dataTx = db.transaction(DATA_STORE, 'readwrite');
-                    dataTx.objectStore(DATA_STORE).clear();
-                    await new Promise(resolve => dataTx.oncomplete = resolve);
-                    
-                    const fileTx = db.transaction(FILE_STORE, 'readwrite');
-                    fileTx.objectStore(FILE_STORE).clear();
-                    await new Promise(resolve => fileTx.oncomplete = resolve);
+                         allData = [];
+                         loadedFiles = [];
+                         
+                         renderLoadedFiles();
+                         renderDashboard();
+                     } catch (e) {
+                         importError.textContent = "Erro ao limpar o histórico.";
+                         console.error(e);
+                     } finally {
+                         hideLoading();
+                     }
                 }
-
-                allData = [];
-                loadedFiles = [];
-                
-                renderLoadedFiles();
-                renderDashboard();
-            } catch (e) {
-                importError.textContent = "Erro ao limpar o histórico.";
-                console.error(e);
-            } finally {
-                hideLoading();
-            }
+            );
         };
 
         // --- EVENT LISTENERS ---
         navDashboard.addEventListener('click', () => switchView('dashboard'));
         navImport.addEventListener('click', () => switchView('import'));
         fileUpload.addEventListener('change', (e) => processFile(e.target.files[0]));
+        modalCancelBtn.addEventListener('click', hideModal);
+        modalConfirmBtn.addEventListener('click', () => {
+            if (typeof confirmAction === 'function') {
+                confirmAction();
+            }
+            hideModal();
+        });
         
         dropZone.addEventListener('dragover', (e) => { e.preventDefault(); e.stopPropagation(); dropZone.classList.add('border-blue-500', 'bg-blue-50'); });
         dropZone.addEventListener('dragleave', (e) => { e.preventDefault(); e.stopPropagation(); dropZone.classList.remove('border-blue-500', 'bg-blue-50'); });
@@ -1251,49 +1077,42 @@
             if(e.target.id === 'apply-filter-btn') {
                 appliedDateRange.start = document.getElementById('start-date').value;
                 appliedDateRange.end = document.getElementById('end-date').value;
-                goBackOneLevel();
+                navigateToState({ region: null, state: null, carrier: null, reason: null, delayRange: null });
             }
             if(e.target.id === 'clear-filter-btn') {
                  appliedDateRange = { start: '', end: '' };
-                 goBackOneLevel();
+                 navigateToState({ region: null, state: null, carrier: null, reason: null, delayRange: null });
+            }
+            if(e.target.closest('.breadcrumb-link')) {
+                e.preventDefault();
+                const state = JSON.parse(e.target.closest('.breadcrumb-link').dataset.state);
+                navigateToState(state);
             }
 
-            if(e.target.closest('.clickable-bar')) {
-                const bar = e.target.closest('.clickable-bar');
-                const chart = bar.closest('.bg-white');
-                if (chart && chart.id === 'state-performance') {
-                    selectedState = bar.dataset.label;
-                    renderDashboard();
-                    return; 
-                }
-                if(chart && chart.id === 'region-performance') {
-                    selectedRegion = bar.dataset.label;
-                    renderDashboard();
-                }
-                if(chart && chart.id === 'carrier-performance') {
-                    selectedCarrier = bar.dataset.label;
-                    renderDashboard();
-                }
-                 if(chart && chart.id === 'delay-distribution') {
-                    selectedDelayRange = bar.dataset.label;
-                    renderDashboard();
-                }
-                 if(chart && chart.id === 'delay-by-region') {
-                    selectedRegionForDelay = bar.dataset.label;
-                    renderDashboard();
-                }
+            const clickableBar = e.target.closest('.clickable-bar');
+            if(clickableBar) {
+                 const chart = clickableBar.closest('.bg-white');
+                 const label = clickableBar.dataset.label;
+                 if (chart && chart.id === 'state-performance') {
+                     selectedState = label;
+                 } else if(chart && chart.id === 'region-performance') {
+                     selectedRegion = label;
+                 } else if(chart && (chart.id === 'carrier-performance' || chart.id === 'carrier-in-state-performance' || chart.id === 'carrier-performance-region')) {
+                     selectedCarrier = label;
+                 } else if(chart && chart.id === 'delay-distribution') {
+                     selectedDelayRange = label;
+                 }
+                 renderDashboard();
+                 return; 
             }
 
-            if(e.target.closest('.reason-row')) {
-                const reasonRow = e.target.closest('.reason-row');
+            const reasonRow = e.target.closest('.reason-row');
+            if(reasonRow) {
                 selectedReason = {
                     reason: reasonRow.dataset.reason,
                     type: reasonRow.dataset.type
                 };
                 renderDashboard();
-            }
-            if(e.target.id === 'back-to-dashboard') {
-                goBackOneLevel();
             }
         });
 
@@ -1325,10 +1144,7 @@
                 errorBanner.id = 'error-banner';
                 errorBanner.className = 'bg-yellow-100 border-l-4 border-yellow-500 text-yellow-700 p-4 sticky top-0 z-20';
                 errorBanner.setAttribute('role', 'alert');
-                errorBanner.innerHTML = `
-                    <p class="font-bold">Aviso de Armazenamento</p>
-                    <p>Não foi possível aceder ao armazenamento local. Os dados carregados serão perdidos ao fechar a página. Isto pode acontecer se estiver em modo de navegação anónima.</p>
-                `;
+                errorBanner.innerHTML = `<p class="font-bold">Aviso de Armazenamento</p><p>Não foi possível aceder ao armazenamento local. Os dados carregados serão perdidos ao fechar a página. Isto pode acontecer se estiver em modo de navegação anónima.</p>`;
                 document.body.insertBefore(errorBanner, document.body.firstChild);
                 historySection.style.display = 'none';
                 
