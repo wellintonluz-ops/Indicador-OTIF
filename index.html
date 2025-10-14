@@ -118,6 +118,8 @@
         let selectedCarrier = null;
         let selectedReason = null;
         let selectedDelayRange = null;
+        let selectedDelayRegion = null;
+        let selectedDelayUF = null;
         let isDbAvailable = true;
         let dbPromise;
 
@@ -226,6 +228,8 @@
             selectedCarrier = newState.carrier;
             selectedReason = newState.reason;
             selectedDelayRange = newState.delayRange;
+            selectedDelayRegion = newState.delayRegion;
+            selectedDelayUF = newState.delayUF;
             renderDashboard();
         }
 
@@ -279,8 +283,12 @@
                  viewHtml = renderCarrierDetailView(selectedCarrier);
             } else if (selectedReason) {
                  viewHtml = renderReasonDetailView(selectedReason);
+            } else if (selectedDelayUF) {
+                 viewHtml = renderDelayByCarrierInUFView(selectedDelayRange, selectedDelayRegion, selectedDelayUF);
+            } else if (selectedDelayRegion) {
+                 viewHtml = renderDelayByUFView(selectedDelayRange, selectedDelayRegion);
             } else if (selectedDelayRange) {
-                 viewHtml = renderDelayDistributionDetailView(selectedDelayRange);
+                 viewHtml = renderDelayByRegionView(selectedDelayRange);
             } else {
                  viewHtml = renderMainDashboardView();
             }
@@ -355,18 +363,22 @@
              </div>`;
         
         const renderBreadcrumbs = () => {
-            let crumbs = [{ label: 'Dashboard', state: { region: null, state: null, carrier: null, reason: null, delayRange: null } }];
-
-            if (selectedRegion) crumbs.push({ label: selectedRegion, state: { region: selectedRegion, state: null } });
-            if (selectedState) crumbs.push({ label: selectedState, state: { region: selectedRegion, state: selectedState } });
+            const initialState = { region: null, state: null, carrier: null, reason: null, delayRange: null, delayRegion: null, delayUF: null };
+            let crumbs = [{ label: 'Dashboard', state: initialState }];
             
-            // Terminal views don't add a breadcrumb but show the context in the title
-            let titleCrumb = '';
-            if(selectedCarrier) titleCrumb = `Transportadora: ${selectedCarrier}`;
-            if(selectedReason) titleCrumb = `Motivo: ${selectedReason.reason}`;
-            if(selectedDelayRange) titleCrumb = `Atraso: ${selectedDelayRange}`;
+            let terminalCrumbLabel = '';
 
-            if(titleCrumb) crumbs.push({label: titleCrumb, state: {}});
+            if (selectedRegion) crumbs.push({ label: selectedRegion, state: { ...initialState, region: selectedRegion } });
+            if (selectedState) crumbs.push({ label: selectedState, state: { ...initialState, region: selectedRegion, state: selectedState } });
+
+            if(selectedCarrier) terminalCrumbLabel = `Transportadora: ${selectedCarrier}`;
+            if(selectedReason) terminalCrumbLabel = `Motivo: ${selectedReason.reason}`;
+
+            if(selectedDelayRange) crumbs.push({ label: `Atraso: ${selectedDelayRange}`, state: { ...initialState, delayRange: selectedDelayRange } });
+            if(selectedDelayRegion) crumbs.push({ label: selectedDelayRegion, state: { ...initialState, delayRange: selectedDelayRange, delayRegion: selectedDelayRegion } });
+            if(selectedDelayUF) terminalCrumbLabel = selectedDelayUF;
+
+            if(terminalCrumbLabel) crumbs.push({label: terminalCrumbLabel, state: {}});
 
 
             return `<nav class="flex" aria-label="Breadcrumb">
@@ -428,21 +440,29 @@
             if (!chartData || chartData.length === 0 || chartData.every(item => item.value === 0)) {
                 return `<div id="${id}" class="bg-white p-6 rounded-lg shadow-md"><h3 class="text-lg font-semibold mb-4 text-gray-700">${title}</h3><p class="text-gray-500">Não há dados de atraso para exibir.</p></div>`;
             }
+            const totalValue = chartData.reduce((sum, item) => sum + item.value, 0);
             const maxValue = Math.max(...chartData.map(item => item.value));
+            const titleHtml = title ? `<h3 class="text-lg font-semibold mb-4 text-gray-700">${title}</h3>` : '';
             return `
                 <div id="${id}" class="bg-white p-6 rounded-lg shadow-md">
-                    <h3 class="text-lg font-semibold mb-4 text-gray-700">${title}</h3>
+                    ${titleHtml}
                     <div class="space-y-4">
-                        ${chartData.map(item => `
+                        ${chartData.map(item => {
+                            const percentage = totalValue > 0 ? (item.value / totalValue) * 100 : 0;
+                            return `
                             <div data-label="${item.label}" class="flex items-center group ${isClickable ? 'cursor-pointer clickable-bar' : ''}">
-                                <p class="w-1/4 text-sm text-gray-600 truncate pr-2 group-hover:text-blue-600">${item.label}</p>
-                                <div class="w-3/4 bg-gray-200 rounded-full h-6">
-                                    <div class="bg-red-500 h-6 rounded-full text-white text-xs flex items-center justify-end pr-2 group-hover:opacity-80 transition-opacity" style="width: ${(maxValue > 0 ? (item.value / maxValue) * 100 : 0)}%;">
-                                        ${item.value.toLocaleString('pt-BR')}
+                                <p class="w-1/3 text-sm text-gray-600 truncate pr-2 group-hover:text-blue-600">${item.label}</p>
+                                <div class="w-2/3 flex items-center">
+                                    <div class="w-full bg-gray-200 rounded-full h-6">
+                                        <div class="bg-red-500 h-6 rounded-full text-white text-xs flex items-center justify-end pr-2 group-hover:opacity-80 transition-opacity" style="width: ${(maxValue > 0 ? (item.value / maxValue) * 100 : 0)}%;">
+                                            ${item.value.toLocaleString('pt-BR')}
+                                        </div>
                                     </div>
+                                    <p class="w-16 text-right text-sm font-semibold text-gray-700 pl-3">${percentage.toFixed(1)}%</p>
                                 </div>
                             </div>
-                        `).join('')}
+                            `
+                        }).join('')}
                     </div>
                 </div>`;
         };
@@ -612,43 +632,58 @@
             return html;
         };
         
-        const renderDelayDistributionDetailView = (delayRange) => {
-            const data = getFilteredData();
-            const metrics = calculateMetrics(data);
-            const dataForRange = metrics.carrierPerformanceByDelayRange[delayRange];
+        const renderDelayByRegionView = (delayRange) => {
+            const metrics = calculateMetrics();
+            const dataForRange = metrics.delaysByRegion[delayRange];
 
             if (!dataForRange || Object.keys(dataForRange).length === 0) {
-                return `<div class="bg-white p-6 rounded-lg shadow-md"><h3 class="text-lg font-semibold mb-4 text-gray-700">Detalhes para a Faixa de Atraso: <span class="text-blue-600">${delayRange}</span></h3><p class="text-gray-500">Nenhuma transportadora encontrada para esta faixa de atraso.</p></div>`;
+                return `<div class="bg-white p-6 rounded-lg shadow-md"><h3 class="text-lg font-semibold mb-4 text-gray-700">Atrasos de <span class="text-blue-600">${delayRange}</span></h3><p class="text-gray-500">Nenhuma ocorrência encontrada para esta faixa de atraso.</p></div>`;
             }
 
-            const totalOccurrences = Object.values(dataForRange).reduce((a, b) => a + b, 0);
-            const tableData = Object.entries(dataForRange)
-                .map(([carrier, count]) => ({ label: carrier, count }))
-                .sort((a, b) => b.count - a.count);
+            const chartData = Object.entries(dataForRange)
+                .map(([region, count]) => ({ label: region, value: count }))
+                .sort((a, b) => b.value - a.value);
 
             return `<div class="bg-white p-6 rounded-lg shadow-md">
-                <h3 class="text-lg font-semibold mb-4 text-gray-700">Transportadoras com Atraso de <span class="text-blue-600">${delayRange}</span></h3>
-                <div class="overflow-x-auto">
-                    <table class="min-w-full divide-y divide-gray-200">
-                        <thead class="bg-gray-50">
-                            <tr>
-                                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Transportadora</th>
-                                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Ocorrências de Atraso</th>
-                                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">% do Total</th>
-                            </tr>
-                        </thead>
-                        <tbody class="bg-white divide-y divide-gray-200">
-                            ${tableData.map(item => `
-                                <tr>
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">${item.label}</td>
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${item.count}</td>
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${((item.count / totalOccurrences) * 100).toFixed(2)}%</td>
-                                </tr>
-                            `).join('')}
-                        </tbody>
-                    </table>
-                </div>
-            </div>`;
+                        <h3 class="text-lg font-semibold mb-4 text-gray-700">Atrasos de <span class="text-blue-600">${delayRange}</span> por Região (Clique para detalhar)</h3>
+                        ${renderCountBarChart('delay-by-region', chartData, '', true)}
+                    </div>`;
+        };
+
+        const renderDelayByUFView = (delayRange, region) => {
+            const metrics = calculateMetrics();
+            const dataForUF = metrics.delaysByUF[delayRange]?.[region];
+
+            if (!dataForUF || Object.keys(dataForUF).length === 0) {
+                 return `<div class="bg-white p-6 rounded-lg shadow-md"><h3 class="text-lg font-semibold mb-4 text-gray-700">Atrasos de <span class="text-blue-600">${delayRange}</span> em <span class="text-blue-600">${region}</span></h3><p class="text-gray-500">Nenhum UF encontrado.</p></div>`;
+            }
+
+            const chartData = Object.entries(dataForUF)
+                .map(([uf, count]) => ({ label: uf, value: count }))
+                .sort((a, b) => b.value - a.value);
+
+            return `<div class="bg-white p-6 rounded-lg shadow-md">
+                        <h3 class="text-lg font-semibold mb-4 text-gray-700">Atrasos de <span class="text-blue-600">${delayRange}</span> em <span class="text-blue-600">${region}</span> por UF (Clique para detalhar)</h3>
+                        ${renderCountBarChart('delay-by-uf', chartData, '', true)}
+                    </div>`;
+        };
+
+        const renderDelayByCarrierInUFView = (delayRange, region, uf) => {
+            const metrics = calculateMetrics();
+            const dataForCarrier = metrics.delaysByCarrierInUF[delayRange]?.[uf];
+
+            if (!dataForCarrier || Object.keys(dataForCarrier).length === 0) {
+                 return `<div class="bg-white p-6 rounded-lg shadow-md"><h3 class="text-lg font-semibold mb-4 text-gray-700">Atrasos de <span class="text-blue-600">${delayRange}</span> em <span class="text-blue-600">${uf}</span></h3><p class="text-gray-500">Nenhuma transportadora encontrada.</p></div>`;
+            }
+
+            const chartData = Object.entries(dataForCarrier)
+                .map(([carrier, count]) => ({ label: carrier, value: count }))
+                .sort((a, b) => b.value - a.value);
+            
+            return `<div class="bg-white p-6 rounded-lg shadow-md">
+                        <h3 class="text-lg font-semibold mb-4 text-gray-700">Atrasos de <span class="text-blue-600">${delayRange}</span> em <span class="text-blue-600">${uf}</span> por Transportadora</h3>
+                        ${renderCountBarChart('delay-by-carrier', chartData, '', false)}
+                    </div>`;
         };
 
         const renderSingleMetricChart = (monthlyData, title, metricKey, year, target) => {
@@ -757,7 +792,7 @@
                     label, 
                     value: (values.otif / values.total) * 100,
                     totalCount: values.total
-                })).sort((a, b) => b.totalCount - a.totalCount);
+                })).sort((a, b) => b.value - a.value);
             };
 
             const carrierPerformance = createPerformanceMetric('TRANSPORTADORA');
@@ -844,24 +879,41 @@
             });
 
             const delayDistribution = { "1 dia": 0, "2 a 3 dias": 0, "4 a 5 dias": 0, "6 dias ou mais": 0 };
-            const carrierPerformanceByDelayRange = { "1 dia": {}, "2 a 3 dias": {}, "4 a 5 dias": {}, "6 dias ou mais": {} };
+            
+            const delaysByRegion = {};
+            const delaysByUF = {};
+            const delaysByCarrierInUF = {};
 
             processedData.forEach(row => {
                 if (!row.isOnTime) {
                     const diasAtraso = parseInt(row['DIAS ATRASOS ÚTEIS'], 10);
-                    const carrier = row['TRANSPORTADORA'];
-                    if (!isNaN(diasAtraso)) {
-                        let range = null;
-                        if (diasAtraso === 1) range = "1 dia";
-                        else if (diasAtraso >= 2 && diasAtraso <= 3) range = "2 a 3 dias";
-                        else if (diasAtraso >= 4 && diasAtraso <= 5) range = "4 a 5 dias";
-                        else if (diasAtraso >= 6) range = "6 dias ou mais";
-                        if (range) {
-                            delayDistribution[range]++;
-                            if (carrier) {
-                                if (!carrierPerformanceByDelayRange[range][carrier]) carrierPerformanceByDelayRange[range][carrier] = 0;
-                                carrierPerformanceByDelayRange[range][carrier]++;
-                            }
+                    if (isNaN(diasAtraso)) return;
+
+                    let range = null;
+                    if (diasAtraso === 1) range = "1 dia";
+                    else if (diasAtraso >= 2 && diasAtraso <= 3) range = "2 a 3 dias";
+                    else if (diasAtraso >= 4 && diasAtraso <= 5) range = "4 a 5 dias";
+                    else if (diasAtraso >= 6) range = "6 dias ou mais";
+                    
+                    if (range) {
+                        delayDistribution[range]++;
+                        const region = row['Região'] || row['região'];
+                        const uf = row['UF'] || row['uf'];
+                        const carrier = row['TRANSPORTADORA'] || row['transportadora'];
+
+                        if (region) {
+                            if (!delaysByRegion[range]) delaysByRegion[range] = {};
+                            delaysByRegion[range][region] = (delaysByRegion[range][region] || 0) + 1;
+                        }
+                        if (region && uf) {
+                            if (!delaysByUF[range]) delaysByUF[range] = {};
+                            if (!delaysByUF[range][region]) delaysByUF[range][region] = {};
+                            delaysByUF[range][region][uf] = (delaysByUF[range][region][uf] || 0) + 1;
+                        }
+                        if (uf && carrier) {
+                            if (!delaysByCarrierInUF[range]) delaysByCarrierInUF[range] = {};
+                            if (!delaysByCarrierInUF[range][uf]) delaysByCarrierInUF[range][uf] = {};
+                            delaysByCarrierInUF[range][uf][carrier] = (delaysByCarrierInUF[range][uf][carrier] || 0) + 1;
                         }
                     }
                 }
@@ -874,7 +926,10 @@
                 topDelayReasons, totalDelayed: totalDeliveries - onTimeCount,
                 topDiscrepancyReasons, totalDiscrepancy: totalDeliveries - inFullCount,
                 carrierPerformanceByReason, historicalCarrierOtif, monthlyPerformance, yearForHistory: latestYear,
-                delayDistributionData, carrierPerformanceByDelayRange,
+                delayDistributionData, 
+                delaysByRegion,
+                delaysByUF,
+                delaysByCarrierInUF,
             };
         };
 
@@ -1077,11 +1132,11 @@
             if(e.target.id === 'apply-filter-btn') {
                 appliedDateRange.start = document.getElementById('start-date').value;
                 appliedDateRange.end = document.getElementById('end-date').value;
-                navigateToState({ region: null, state: null, carrier: null, reason: null, delayRange: null });
+                navigateToState({ region: null, state: null, carrier: null, reason: null, delayRange: null, delayRegion: null, delayUF: null });
             }
             if(e.target.id === 'clear-filter-btn') {
                  appliedDateRange = { start: '', end: '' };
-                 navigateToState({ region: null, state: null, carrier: null, reason: null, delayRange: null });
+                 navigateToState({ region: null, state: null, carrier: null, reason: null, delayRange: null, delayRegion: null, delayUF: null });
             }
             if(e.target.closest('.breadcrumb-link')) {
                 e.preventDefault();
@@ -1091,19 +1146,28 @@
 
             const clickableBar = e.target.closest('.clickable-bar');
             if(clickableBar) {
-                 const chart = clickableBar.closest('.bg-white');
-                 const label = clickableBar.dataset.label;
-                 if (chart && chart.id === 'state-performance') {
-                     selectedState = label;
-                 } else if(chart && chart.id === 'region-performance') {
-                     selectedRegion = label;
-                 } else if(chart && (chart.id === 'carrier-performance' || chart.id === 'carrier-in-state-performance' || chart.id === 'carrier-performance-region')) {
-                     selectedCarrier = label;
-                 } else if(chart && chart.id === 'delay-distribution') {
-                     selectedDelayRange = label;
-                 }
-                 renderDashboard();
-                 return; 
+                const chart = clickableBar.closest('.bg-white');
+                const label = clickableBar.dataset.label;
+
+                if (chart && chart.id === 'state-performance') {
+                    selectedState = label;
+                } else if (chart && chart.id === 'region-performance') {
+                    selectedRegion = label;
+                } else if (chart && (chart.id === 'carrier-performance' || chart.id === 'carrier-in-state-performance' || chart.id === 'carrier-performance-region')) {
+                    selectedCarrier = label;
+                } else if (chart && chart.id === 'delay-distribution') {
+                    selectedDelayRange = label;
+                    selectedDelayRegion = null;
+                    selectedDelayUF = null;
+                } else if (chart && chart.id === 'delay-by-region') {
+                    selectedDelayRegion = label;
+                    selectedDelayUF = null;
+                } else if (chart && chart.id === 'delay-by-uf') {
+                    selectedDelayUF = label;
+                }
+                
+                renderDashboard();
+                return; 
             }
 
             const reasonRow = e.target.closest('.reason-row');
@@ -1162,4 +1226,7 @@
     </script>
 </body>
 </html>
+
+
+
 
