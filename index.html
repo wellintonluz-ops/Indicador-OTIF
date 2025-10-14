@@ -827,25 +827,31 @@
                 }
             });
 
-            // --- LÓGICA DO HISTÓRICO MENSAL ---
-            const latestYear = processedData.length > 0 ? Math.max(...processedData.map(r => parseDate(r['Data Pedido']).getFullYear()).filter(y => !isNaN(y))) : new Date().getFullYear();
+            // --- LÓGICA DO HISTÓRICO MENSAL (GRÁFICOS PRINCIPAIS - INDEPENDENTE DO FILTRO) ---
+            const yearForMonthlyCharts = allData.length > 0 ? Math.max(...allData.map(r => parseDate(r['Data Pedido']).getFullYear()).filter(y => !isNaN(y))) : new Date().getFullYear();
             
-            const monthlyPerformanceData = processedData.filter(row => parseDate(row['Data Pedido']).getFullYear() === latestYear)
-                .reduce((acc, curr) => {
+            const monthlyPerformanceData = allData.filter(row => {
+                const d = parseDate(row['Data Pedido']);
+                return d && !isNaN(d.getTime()) && d.getFullYear() === yearForMonthlyCharts;
+            })
+            .reduce((acc, curr) => {
                 const rowDate = parseDate(curr['Data Pedido']);
                 if (isNaN(rowDate.getTime())) return acc;
                 const monthKey = `${rowDate.getFullYear()}-${String(rowDate.getMonth() + 1).padStart(2, '0')}`;
                 if (!acc[monthKey]) acc[monthKey] = { total: 0, otifCount: 0, onTimeCount: 0, inFullCount: 0 };
                 
+                const isOnTime = curr['Status Entrega'] !== 'Fora do Prazo';
+                const isInFull = !curr['Entrega divergente?'] || String(curr['Entrega divergente?']).toLowerCase() !== 'sim';
+
                 acc[monthKey].total++;
-                if(curr.isOnTime) acc[monthKey].onTimeCount++;
-                if(curr.isInFull) acc[monthKey].inFullCount++;
-                if (curr.isOnTime && curr.isInFull) acc[monthKey].otifCount++;
+                if(isOnTime) acc[monthKey].onTimeCount++;
+                if(isInFull) acc[monthKey].inFullCount++;
+                if (isOnTime && isInFull) acc[monthKey].otifCount++;
                 return acc;
             }, {});
 
             const monthlyPerformance = Array.from({ length: 12 }).map((_, index) => {
-                const monthKey = `${latestYear}-${String(index + 1).padStart(2, '0')}`;
+                const monthKey = `${yearForMonthlyCharts}-${String(index + 1).padStart(2, '0')}`;
                 const data = monthlyPerformanceData[monthKey];
                 return data && data.total > 0 ? {
                     month: monthKey,
@@ -856,7 +862,10 @@
                 } : { month: monthKey, otifRate: undefined, onTimeRate: undefined, inFullRate: undefined, totalCount: 0 };
             });
 
-            const historicalCarrierOtif = processedData.filter(row => parseDate(row['Data Pedido']).getFullYear() === latestYear)
+            // --- LÓGICA DO HISTÓRICO (DRILLDOWN TRANSPORTADORA - RESPEITA O FILTRO) ---
+            const yearForHistory = processedData.length > 0 ? Math.max(...processedData.map(r => parseDate(r['Data Pedido']).getFullYear()).filter(y => !isNaN(y))) : new Date().getFullYear();
+
+            const historicalCarrierOtif = processedData.filter(row => parseDate(row['Data Pedido']).getFullYear() === yearForHistory)
                 .reduce((acc, curr) => {
                 const carrier = curr['TRANSPORTADORA'];
                 const rowDate = parseDate(curr['Data Pedido']);
@@ -925,7 +934,7 @@
                 totalDeliveries, otifRate, onTimeRate, inFullRate, carrierPerformance, regionPerformance, statePerformance,
                 topDelayReasons, totalDelayed: totalDeliveries - onTimeCount,
                 topDiscrepancyReasons, totalDiscrepancy: totalDeliveries - inFullCount,
-                carrierPerformanceByReason, historicalCarrierOtif, monthlyPerformance, yearForHistory: latestYear,
+                carrierPerformanceByReason, historicalCarrierOtif, monthlyPerformance, yearForHistory,
                 delayDistributionData, 
                 delaysByRegion,
                 delaysByUF,
@@ -1226,6 +1235,8 @@
     </script>
 </body>
 </html>
+
+
 
 
 
