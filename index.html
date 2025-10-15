@@ -1060,9 +1060,7 @@
         }
 
         const calculateMetrics = (data) => {
-            const useFullDataset = !data;
             const sourceData = data || getFilteredData();
-            const historicalData = useFullDataset ? allData : sourceData;
 
             // --- CÁLCULOS FILTRADOS ---
             const dataForStatusMetrics = sourceData.filter(row => getRowValue(row, 'delayReason') !== 'Desistência de compra');
@@ -1121,28 +1119,33 @@
             });
 
             const totalDeliveries = processedData.length;
-            const otifCount = processedData.filter(d => d.isOnTime && d.isInFull).length;
             const onTimeCount = processedData.filter(d => d.isOnTime).length;
             const inFullCount = processedData.filter(d => d.isInFull).length;
             
-            const otifRate = totalDeliveries > 0 ? (otifCount / totalDeliveries) * 100 : 0;
             const onTimeRate = totalDeliveries > 0 ? (onTimeCount / totalDeliveries) * 100 : 0;
             const inFullRate = totalDeliveries > 0 ? (inFullCount / totalDeliveries) * 100 : 0;
+            const otifRate = (onTimeRate / 100) * inFullRate;
+
 
             const createPerformanceMetric = (key) => {
                 const byKey = processedData.reduce((acc, curr) => {
                     const label = getRowValue(curr, key);
                     if (!label) return acc;
-                    if (!acc[label]) acc[label] = { total: 0, otif: 0 };
+                    if (!acc[label]) acc[label] = { total: 0, onTime: 0, inFull: 0 };
                     acc[label].total++;
-                    if (curr.isOnTime && curr.isInFull) acc[label].otif++;
+                    if (curr.isOnTime) acc[label].onTime++;
+                    if (curr.isInFull) acc[label].inFull++;
                     return acc;
                 }, {});
-                return Object.entries(byKey).map(([label, values]) => ({
-                    label, 
-                    value: (values.otif / values.total) * 100,
-                    totalCount: values.total
-                })).sort((a, b) => b.value - a.value);
+                return Object.entries(byKey).map(([label, values]) => {
+                    const groupOnTimeRate = (values.onTime / values.total) * 100;
+                    const groupInFullRate = (values.inFull / values.total) * 100;
+                    return {
+                        label, 
+                        value: (groupOnTimeRate / 100) * groupInFullRate,
+                        totalCount: values.total
+                    }
+                }).sort((a, b) => b.value - a.value);
             };
 
             const carrierPerformance = createPerformanceMetric('carrier');
@@ -1269,37 +1272,35 @@
                 const rowDate = parseDate(getRowValue(curr, 'pedidoDate'));
                 if (isNaN(rowDate.getTime())) return acc;
                 const monthKey = `${yearForHistory}-${String(rowDate.getMonth() + 1).padStart(2, '0')}`;
-                if (!acc[monthKey]) acc[monthKey] = { total: 0, otifCount: 0, onTimeCount: 0, inFullCount: 0 };
+                if (!acc[monthKey]) acc[monthKey] = { total: 0, onTimeCount: 0, inFullCount: 0 };
                 const isOnTime = getRowValue(curr, 'status') !== 'Fora do Prazo';
                 const divergentValue = getRowValue(curr, 'divergent');
                 const isInFull = !divergentValue || String(divergentValue).trim().toLowerCase() !== 'sim';
                 acc[monthKey].total++;
                 if(isOnTime) acc[monthKey].onTimeCount++;
                 if(isInFull) acc[monthKey].inFullCount++;
-                if (isOnTime && isInFull) acc[monthKey].otifCount++;
                 return acc;
             }, {});
 
             const monthlyPerformance = Array.from({ length: 12 }).map((_, index) => {
                 const monthKey = `${yearForHistory}-${String(index + 1).padStart(2, '0')}`;
                 const data = monthlyPerformanceData[monthKey];
-                return data && data.total > 0 ? {
-                    month: monthKey,
-                    otifRate: (data.otifCount / data.total) * 100,
-                    onTimeRate: (data.onTimeCount / data.total) * 100,
-                    inFullRate: (data.inFullCount / data.total) * 100,
-                    totalCount: data.total
-                } : { month: monthKey, otifRate: undefined, onTimeRate: undefined, inFullRate: undefined, totalCount: 0 };
+                if (data && data.total > 0) {
+                    const onTimeRate = (data.onTimeCount / data.total) * 100;
+                    const inFullRate = (data.inFullCount / data.total) * 100;
+                    return {
+                        month: monthKey,
+                        otifRate: (onTimeRate / 100) * inFullRate,
+                        onTimeRate: onTimeRate,
+                        inFullRate: inFullRate,
+                        totalCount: data.total
+                    };
+                } else {
+                    return { month: monthKey, otifRate: undefined, onTimeRate: undefined, inFullRate: undefined, totalCount: 0 };
+                }
             });
 
-            const allDataProcessed = allData.map(row => {
-                const isOnTime = getRowValue(row, 'status') !== 'Fora do Prazo';
-                const divergentValue = getRowValue(row, 'divergent');
-                const isInFull = !divergentValue || String(divergentValue).trim().toLowerCase() !== 'sim';
-                return { ...row, isOnTime, isInFull };
-            });
-
-            const historicalCarrierOtif = allDataProcessed.filter(row => {
+            const historicalCarrierOtif = allData.filter(row => {
                 const d = parseDate(getRowValue(row, 'pedidoDate'));
                 return d && !isNaN(d.getTime()) && d.getFullYear() === yearForHistory;
             }).reduce((acc, curr) => {
@@ -1308,15 +1309,27 @@
                 if (!carrier || isNaN(rowDate.getTime())) return acc;
                 const month = `${yearForHistory}-${String(rowDate.getMonth() + 1).padStart(2, '0')}`;
                 if (!acc[carrier]) acc[carrier] = {};
-                if (!acc[carrier][month]) acc[carrier][month] = { total: 0, otifCount: 0 };
+                if (!acc[carrier][month]) acc[carrier][month] = { total: 0, onTimeCount: 0, inFullCount: 0 };
+
+                const isOnTime = getRowValue(curr, 'status') !== 'Fora do Prazo';
+                const divergentValue = getRowValue(curr, 'divergent');
+                const isInFull = !divergentValue || String(divergentValue).trim().toLowerCase() !== 'sim';
+                
                 acc[carrier][month].total++;
-                if (curr.isOnTime && curr.isInFull) acc[carrier][month].otifCount++;
+                if (isOnTime) acc[carrier][month].onTimeCount++;
+                if (isInFull) acc[carrier][month].inFullCount++;
+                
                 return acc;
             }, {});
             Object.keys(historicalCarrierOtif).forEach(carrier => {
                 Object.keys(historicalCarrierOtif[carrier]).forEach(month => {
-                    const { total, otifCount } = historicalCarrierOtif[carrier][month];
-                    historicalCarrierOtif[carrier][month] = { value: (otifCount / total) * 100, totalCount: total };
+                    const { total, onTimeCount, inFullCount } = historicalCarrierOtif[carrier][month];
+                    const onTimeRate = (onTimeCount / total) * 100;
+                    const inFullRate = (inFullCount / total) * 100;
+                    historicalCarrierOtif[carrier][month] = { 
+                        value: (onTimeRate / 100) * inFullRate,
+                        totalCount: total 
+                    };
                 });
             });
 
