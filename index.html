@@ -52,12 +52,12 @@
         <!-- Vista de Importação -->
         <div id="import-view" style="display: none;">
             <div class="flex flex-col items-center justify-center p-4 gap-8">
-                <div id="drop-zone" class="w-full max-w-2xl p-8 text-center bg-white rounded-lg shadow-lg border-2 border-dashed border-gray-300">
+                <div id="drop-zone" class="w-full max-w-2xl p-8 text-center bg-white rounded-lg shadow-lg border-2 border-dashed border-gray-300 transition-colors">
                     <svg class="mx-auto h-12 w-12 text-gray-400" stroke="currentColor" fill="none" viewBox="0 0 48 48" aria-hidden="true"><path d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 01-4 4H12a4 4 0 01-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28m0 0l4 4m4-24h8m-4-4v8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path></svg>
                     <h2 class="mt-4 text-2xl font-bold text-gray-800">Importar Novo Ficheiro</h2>
                     <p class="mt-2 text-sm text-gray-500">Arraste e solte um ficheiro .csv ou .xlsx aqui.</p>
                     <div class="mt-6">
-                        <input type="file" id="file-upload" class="hidden" accept=".csv, .xlsx">
+                        <input type="file" id="file-upload" class="hidden" accept=".csv, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, application/vnd.ms-excel">
                         <label for="file-upload" class="cursor-pointer bg-blue-500 text-white font-bold py-2 px-4 rounded-md hover:bg-blue-600 transition-colors">
                             Ou Selecione um Ficheiro
                         </label>
@@ -70,7 +70,7 @@
                         <!-- A lista de ficheiros será inserida aqui -->
                     </ul>
                      <div class="mt-6 border-t pt-6">
-                         <button id="clear-history-btn" class="w-full font-bold py-2 px-4 rounded-md transition-colors bg-red-500 text-white hover:bg-red-600">
+                         <button id="clear-history-btn" class="w-full font-bold py-2 px-4 rounded-md transition-colors bg-red-500 text-white hover:bg-red-600 disabled:bg-red-300 disabled:cursor-not-allowed">
                              Limpar Todo o Histórico
                          </button>
                      </div>
@@ -80,7 +80,7 @@
 
         <!-- Vista do Dashboard -->
         <div id="dashboard-view">
-             <!-- O conteúdo do dashboard será inserido aqui -->
+            <!-- O conteúdo do dashboard será inserido aqui -->
         </div>
     </main>
 
@@ -95,6 +95,13 @@
             </div>
         </div>
     </div>
+
+    <!-- Botão Voltar ao Topo -->
+    <button id="back-to-top" class="hidden fixed bottom-6 right-6 bg-blue-500 text-white p-3 rounded-full shadow-lg hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50 transition-opacity">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7" />
+        </svg>
+    </button>
 
 
     <script type="module">
@@ -120,8 +127,35 @@
         let selectedDelayRange = null;
         let selectedDelayRegion = null;
         let selectedDelayUF = null;
+        let isPendingDelayedDrilldownActive = false;
         let isDbAvailable = true;
         let dbPromise;
+
+        // --- MAPEAMENTO DE COLUNAS (para robustez) ---
+        const KEY_MAPPINGS = {
+            pedidoDate: ['Data Pedido', 'data pedido', 'DATA PEDIDO', 'Data do Pedido'],
+            deliveryDate: ['Data de entrega', 'data de entrega', 'DATA DE ENTREGA'],
+            status: ['Status Entrega', 'status entrega', 'STATUS ENTREGA'],
+            divergent: ['Entrega divergente?', 'entrega divergente?', 'ENTREGA DIVERGENTE?', 'Divergência de Entrega'],
+            carrier: ['TRANSPORTADORA', 'transportadora', 'Transportadora'],
+            region: ['Região', 'região', 'REGIÃO'],
+            uf: ['UF', 'uf'],
+            delayReason: ['Motivos', 'motivos', 'MOTIVOS', 'Motivo Atraso'],
+            discrepancyReason: ['Divergência', 'divergência', 'DIVERGÊNCIA', 'Motivo Divergência'],
+            delayDays: ['DIAS ATRASOS ÚTEIS', 'dias atrasos úteis', 'Dias Atrasos Úteis', 'Dias de Atraso (Úteis)']
+        };
+
+        const getRowValue = (row, key) => {
+            if (!row) return undefined;
+            const keysToTry = KEY_MAPPINGS[key];
+            if (!keysToTry) return undefined;
+            for (const k of keysToTry) {
+                if (row[k] !== undefined) {
+                    return row[k];
+                }
+            }
+            return undefined;
+        };
 
         // --- ELEMENTOS DO DOM ---
         const loadingOverlay = document.getElementById('loading-overlay');
@@ -142,6 +176,7 @@
         const modalMessage = document.getElementById('modal-message');
         const modalCancelBtn = document.getElementById('modal-cancel-btn');
         const modalConfirmBtn = document.getElementById('modal-confirm-btn');
+        const backToTopBtn = document.getElementById('back-to-top');
 
         let confirmAction = null;
 
@@ -223,6 +258,7 @@
         };
 
         const navigateToState = (newState) => {
+            isPendingDelayedDrilldownActive = false; // Reset drilldown state on any navigation
             selectedRegion = newState.region;
             selectedState = newState.state;
             selectedCarrier = newState.carrier;
@@ -246,16 +282,28 @@
         };
 
         const renderLoadedFiles = () => {
+            clearHistoryBtn.disabled = loadedFiles.length === 0;
             if (loadedFiles.length === 0) {
                 loadedFilesList.innerHTML = `<p class="text-gray-500">Nenhum ficheiro foi carregado ainda.</p>`;
                 return;
             }
-            loadedFilesList.innerHTML = loadedFiles.map(file => `
-                <li class="flex justify-between items-center bg-gray-50 p-3 rounded-md">
-                    <span class="text-gray-700 truncate pr-4">${file.name}</span>
-                    <button data-filename="${file.name}" class="remove-file-btn text-red-500 hover:text-red-700 font-semibold flex-shrink-0">Remover</button>
-                </li>
-            `).join('');
+            loadedFilesList.innerHTML = loadedFiles
+                .sort((a, b) => new Date(b.uploadDate) - new Date(a.uploadDate))
+                .map(file => {
+                    const rowCount = allData.filter(row => row.fileName === file.name).length;
+                    const uploadDate = new Date(file.uploadDate);
+                    const formattedDate = !isNaN(uploadDate) ? uploadDate.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'Data inválida';
+
+                    return `
+                    <li class="flex justify-between items-center bg-gray-50 p-3 rounded-md hover:bg-gray-100 transition-colors">
+                        <div>
+                             <p class="text-gray-800 font-semibold truncate pr-4">${file.name}</p>
+                             <p class="text-xs text-gray-500">${rowCount.toLocaleString('pt-BR')} linhas - Carregado em ${formattedDate}</p>
+                        </div>
+                        <button data-filename="${file.name}" class="remove-file-btn text-red-500 hover:text-red-700 font-semibold flex-shrink-0">Remover</button>
+                    </li>
+                    `;
+                }).join('');
         };
         
         const renderDashboard = () => {
@@ -275,7 +323,9 @@
             
             let viewHtml = '';
 
-            if (selectedState) {
+            if (isPendingDelayedDrilldownActive) {
+                viewHtml = renderPendingDelayedDrilldownView();
+            } else if (selectedState) {
                  viewHtml = renderStateDetailView(selectedRegion, selectedState);
             } else if (selectedRegion) {
                  viewHtml = renderRegionDetailView(selectedRegion);
@@ -296,6 +346,7 @@
             dashboardView.innerHTML = `
                 <div class="space-y-6">
                     ${renderBreadcrumbs()}
+                    <div id="dashboard-messages"></div> <!-- Container for messages -->
                     ${renderDateFilter()}
                     ${viewHtml}
                 </div>
@@ -307,14 +358,15 @@
 
             if (!metrics || metrics.totalDeliveries === 0) {
                  return `<div class="bg-white p-6 rounded-lg shadow-md text-center">
-                              <h3 class="text-lg font-semibold mb-4 text-gray-700">Nenhum dado encontrado</h3>
-                              <p class="text-gray-500">Não há registos que correspondam aos filtros aplicados.</p>
-                          </div>`;
+                             <h3 class="text-lg font-semibold mb-4 text-gray-700">Nenhum dado encontrado</h3>
+                             <p class="text-gray-500">Não há registos que correspondam aos filtros aplicados.</p>
+                         </div>`;
              }
 
             return `
                 ${renderDashboardHeader(metrics)}
-                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                ${renderDeliveryStatusCards(metrics)}
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-6">
                     ${renderSingleMetricChart(metrics.monthlyPerformance, 'Performance Mensal - OTIF', 'otifRate', metrics.yearForHistory, OTIF_TARGET)}
                     ${renderSingleMetricChart(metrics.monthlyPerformance, 'Performance Mensal - On Time', 'onTimeRate', metrics.yearForHistory, ONTIME_TARGET)}
                     ${renderSingleMetricChart(metrics.monthlyPerformance, 'Performance Mensal - In Full', 'inFullRate', metrics.yearForHistory, INFULL_TARGET)}
@@ -378,6 +430,10 @@
             if(selectedDelayRegion) crumbs.push({ label: selectedDelayRegion, state: { ...initialState, delayRange: selectedDelayRange, delayRegion: selectedDelayRegion } });
             if(selectedDelayUF) terminalCrumbLabel = selectedDelayUF;
 
+            if (isPendingDelayedDrilldownActive) {
+                terminalCrumbLabel = 'Pendentes em Atraso';
+            }
+
             if(terminalCrumbLabel) crumbs.push({label: terminalCrumbLabel, state: {}});
 
 
@@ -401,13 +457,127 @@
         };
 
         const renderStatCard = (title, value, color, icon) => `
-            <div class="bg-white p-6 rounded-lg shadow-md flex items-center">
+            <div class="bg-white p-6 rounded-lg shadow-md flex items-center hover:shadow-xl hover:-translate-y-1 transition-all duration-200 cursor-default">
                 <div class="mr-4 p-3 rounded-full ${color}">${icon}</div>
                 <div>
                     <p class="text-sm text-gray-500">${title}</p>
                     <p class="text-2xl font-bold">${value}</p>
                 </div>
             </div>`;
+
+        const renderDeliveryStatusCards = (metrics) => {
+            const deliveredOnTimePercent = metrics.deliveredTotal > 0 ? (metrics.deliveredOnTime / metrics.deliveredTotal * 100).toFixed(1) : '0.0';
+            const deliveredDelayedPercent = metrics.deliveredTotal > 0 ? (metrics.deliveredDelayed / metrics.deliveredTotal * 100).toFixed(1) : '0.0';
+            const pendingOnTimePercent = metrics.pendingTotal > 0 ? (metrics.pendingOnTime / metrics.pendingTotal * 100).toFixed(1) : '0.0';
+            const pendingDelayedPercent = metrics.pendingTotal > 0 ? (metrics.pendingDelayed / metrics.pendingTotal * 100).toFixed(1) : '0.0';
+
+            return `
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div class="bg-white p-6 rounded-lg shadow-md">
+                    <h3 class="text-lg font-semibold mb-4 text-gray-700">Pedidos Entregues</h3>
+                    <div class="space-y-3">
+                        <div class="flex justify-between items-center border-b pb-2">
+                            <span class="font-medium text-gray-600">Total</span>
+                            <span class="font-bold text-xl text-blue-600">${metrics.deliveredTotal.toLocaleString('pt-BR')}</span>
+                        </div>
+                        <div class="flex justify-between items-center">
+                            <span class="text-gray-600">No Prazo</span>
+                            <div>
+                                <span class="font-semibold text-green-600">${metrics.deliveredOnTime.toLocaleString('pt-BR')}</span>
+                                <span class="text-xs text-gray-500 ml-2">(${deliveredOnTimePercent}%)</span>
+                            </div>
+                        </div>
+                        <div class="flex justify-between items-center">
+                            <span class="text-gray-600">Em Atraso</span>
+                            <div>
+                                <span class="font-semibold text-red-600">${metrics.deliveredDelayed.toLocaleString('pt-BR')}</span>
+                                <span class="text-xs text-gray-500 ml-2">(${deliveredDelayedPercent}%)</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="bg-white p-6 rounded-lg shadow-md">
+                    <h3 class="text-lg font-semibold mb-4 text-gray-700">Pedidos Pendentes</h3>
+                    <div class="space-y-3">
+                        <div class="flex justify-between items-center border-b pb-2">
+                            <span class="font-medium text-gray-600">Total</span>
+                            <span class="font-bold text-xl text-yellow-600">${metrics.pendingTotal.toLocaleString('pt-BR')}</span>
+                        </div>
+                        <div class="flex justify-between items-center">
+                            <span class="text-gray-600">No Prazo</span>
+                            <div>
+                                <span class="font-semibold text-green-600">${metrics.pendingOnTime.toLocaleString('pt-BR')}</span>
+                                <span class="text-xs text-gray-500 ml-2">(${pendingOnTimePercent}%)</span>
+                            </div>
+                        </div>
+                        <div class="flex justify-between items-center">
+                            <span class="text-gray-600">Em Atraso</span>
+                            <a href="#" id="drilldown-pending-delayed" class="font-semibold text-red-600 cursor-pointer hover:underline">
+                                ${metrics.pendingDelayed.toLocaleString('pt-BR')}
+                                <span class="text-xs text-gray-500 ml-1">(${pendingDelayedPercent}%)</span>
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            `;
+        }
+
+        const renderPendingDelayedDrilldownView = () => {
+            const metrics = calculateMetrics();
+            const drilldownData = metrics.pendingDelayedByCarrierAndRange;
+            const delayRanges = ["1 dia", "2 a 3 dias", "4 a 5 dias", "6 dias ou mais"];
+
+            if (!drilldownData || Object.keys(drilldownData).length === 0) {
+                return `<div class="bg-white p-6 rounded-lg shadow-md"><h3 class="text-lg font-semibold mb-4 text-gray-700">Detalhe de Pedidos Pendentes em Atraso</h3><p class="text-gray-500">Nenhum pedido pendente em atraso encontrado para o período selecionado.</p></div>`;
+            }
+
+            const tableData = Object.entries(drilldownData).map(([carrier, ranges]) => {
+                const total = Object.values(ranges).reduce((sum, count) => sum + count, 0);
+                return { carrier, ranges, total };
+            }).sort((a, b) => b.total - a.total);
+
+            const totals = { "1 dia": 0, "2 a 3 dias": 0, "4 a 5 dias": 0, "6 dias ou mais": 0, grandTotal: 0 };
+            tableData.forEach(item => {
+                delayRanges.forEach(range => {
+                    totals[range] += item.ranges[range] || 0;
+                });
+                totals.grandTotal += item.total;
+            });
+
+            return `
+                <div class="bg-white p-6 rounded-lg shadow-md">
+                    <h3 class="text-lg font-semibold mb-4 text-gray-700">Detalhe de Pedidos Pendentes em Atraso por Transportadora</h3>
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full divide-y divide-gray-200">
+                            <thead class="bg-gray-50">
+                                <tr>
+                                    <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Transportadora</th>
+                                    ${delayRanges.map(range => `<th scope="col" class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">${range}</th>`).join('')}
+                                    <th scope="col" class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Total</th>
+                                </tr>
+                            </thead>
+                            <tbody class="bg-white divide-y divide-gray-200">
+                                ${tableData.map(item => `
+                                    <tr>
+                                        <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">${item.carrier}</td>
+                                        ${delayRanges.map(range => `<td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 text-right">${(item.ranges[range] || 0).toLocaleString('pt-BR')}</td>`).join('')}
+                                        <td class="px-6 py-4 whitespace-nowrap text-sm font-bold text-gray-800 text-right">${item.total.toLocaleString('pt-BR')}</td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                            <tfoot class="bg-gray-100">
+                                <tr>
+                                    <th scope="row" class="px-6 py-3 text-left text-sm font-bold text-gray-800 uppercase">Total Geral</th>
+                                    ${delayRanges.map(range => `<td class="px-6 py-3 text-right text-sm font-bold text-gray-800">${totals[range].toLocaleString('pt-BR')}</td>`).join('')}
+                                    <td class="px-6 py-3 text-right text-sm font-bold text-gray-900">${totals.grandTotal.toLocaleString('pt-BR')}</td>
+                                </tr>
+                            </tfoot>
+                        </table>
+                    </div>
+                </div>
+            `;
+        };
 
         const renderBarChart = (id, chartData, title, isClickable = false) => {
              if (!chartData || chartData.length === 0) {
@@ -498,7 +668,7 @@
         };
         
         const renderRegionDetailView = (region) => {
-            const regionData = getFilteredData().filter(row => row['Região'] === region);
+            const regionData = getFilteredData().filter(row => getRowValue(row, 'region') === region);
             const metrics = calculateMetrics(regionData);
 
             if (metrics.totalDeliveries === 0) {
@@ -525,7 +695,7 @@
         };
 
         const renderStateDetailView = (region, state) => {
-            const stateData = getFilteredData().filter(row => row['UF'] === state);
+            const stateData = getFilteredData().filter(row => getRowValue(row, 'uf') === state);
             const metrics = calculateMetrics(stateData);
 
              if (metrics.totalDeliveries === 0) {
@@ -621,7 +791,7 @@
                 html += `<div class="relative flex justify-center items-end h-full px-1">`;
                 if (item.value !== undefined) {
                     html += `<div class="absolute text-center w-full text-xs font-bold text-gray-800" style="bottom: calc(${item.value}% + 4px);">${item.value.toFixed(1)}%</div>
-                           <div class="${getOtifColorClass(item.value)} w-3/4" style="height: ${item.value}%;"></div>`;
+                            <div class="${getOtifColorClass(item.value)} w-3/4" style="height: ${item.value}%;"></div>`;
                 }
                 html += `</div>`;
             });
@@ -715,7 +885,7 @@
                 html += `<div class="relative flex justify-center items-end h-full px-1 group">`;
                 if (value !== undefined) {
                     html += `<div class="absolute text-center w-full text-xs font-bold text-gray-800" style="bottom: calc(${value}% + 4px);">${value.toFixed(1)}%</div>
-                           <div class="${getOtifColorClass(value)} w-3/4" style="height: ${value}%;"></div>`;
+                            <div class="${getOtifColorClass(value)} w-3/4" style="height: ${value}%;"></div>`;
                 }
                 html += `</div>`;
             });
@@ -745,7 +915,7 @@
         
         const getFilteredData = () => {
             return allData.filter(row => {
-                const rowDateStr = row['Data Pedido'];
+                const rowDateStr = getRowValue(row, 'pedidoDate');
                 if (!rowDateStr) return false; 
                 
                 const rowDate = parseDate(rowDateStr);
@@ -762,11 +932,62 @@
         }
 
         const calculateMetrics = (data) => {
-             const sourceData = data || getFilteredData();
+            const sourceData = data || getFilteredData();
 
+            // Lógica para pedidos entregues/pendentes
+            const dataForStatusMetrics = sourceData.filter(row => getRowValue(row, 'delayReason') !== 'Desistência de compra');
+            let deliveredTotal = 0, deliveredOnTime = 0, deliveredDelayed = 0;
+            let pendingTotal = 0, pendingOnTime = 0, pendingDelayed = 0;
+
+            dataForStatusMetrics.forEach(row => {
+                const deliveryDate = getRowValue(row, 'deliveryDate');
+                const status = getRowValue(row, 'status');
+                const isOnTime = status === 'Dentro do Prazo';
+
+                if (deliveryDate && String(deliveryDate).trim() !== '') { // Entregue
+                    deliveredTotal++;
+                    if (isOnTime) deliveredOnTime++;
+                    else deliveredDelayed++;
+                } else { // Pendente
+                    pendingTotal++;
+                    if (isOnTime) pendingOnTime++;
+                    else pendingDelayed++;
+                }
+            });
+
+            const pendingDelayedByCarrierAndRange = {};
+            dataForStatusMetrics.forEach(row => {
+                const deliveryDate = getRowValue(row, 'deliveryDate');
+                const status = getRowValue(row, 'status');
+                const isDelayed = status === 'Fora do Prazo';
+
+                if ((!deliveryDate || String(deliveryDate).trim() === '') && isDelayed) {
+                    const carrier = getRowValue(row, 'carrier');
+                    if (!carrier) return; 
+
+                    const diasAtraso = parseInt(getRowValue(row, 'delayDays'), 10);
+                    if (isNaN(diasAtraso) || diasAtraso < 0) return;
+
+                    let range = null;
+                    if (diasAtraso === 1) range = "1 dia";
+                    else if (diasAtraso >= 2 && diasAtraso <= 3) range = "2 a 3 dias";
+                    else if (diasAtraso >= 4 && diasAtraso <= 5) range = "4 a 5 dias";
+                    else if (diasAtraso >= 6) range = "6 dias ou mais";
+                    
+                    if (range) {
+                        if (!pendingDelayedByCarrierAndRange[carrier]) {
+                            pendingDelayedByCarrierAndRange[carrier] = { "1 dia": 0, "2 a 3 dias": 0, "4 a 5 dias": 0, "6 dias ou mais": 0 };
+                        }
+                        pendingDelayedByCarrierAndRange[carrier][range]++;
+                    }
+                }
+            });
+
+
+            // Lógica original para as outras métricas (mantém a base original)
             const processedData = sourceData.map(row => {
-                const isOnTime = row['Status Entrega'] !== 'Fora do Prazo';
-                const isInFull = !row['Entrega divergente?'] || String(row['Entrega divergente?']).toLowerCase() !== 'sim';
+                const isOnTime = getRowValue(row, 'status') !== 'Fora do Prazo';
+                const isInFull = !getRowValue(row, 'divergent') || String(getRowValue(row, 'divergent')).toLowerCase() !== 'sim';
                 return { ...row, isOnTime, isInFull };
             });
 
@@ -781,7 +1002,7 @@
 
             const createPerformanceMetric = (key) => {
                 const byKey = processedData.reduce((acc, curr) => {
-                    const label = curr[key];
+                    const label = getRowValue(curr, key);
                     if (!label) return acc;
                     if (!acc[label]) acc[label] = { total: 0, otif: 0 };
                     acc[label].total++;
@@ -795,53 +1016,57 @@
                 })).sort((a, b) => b.value - a.value);
             };
 
-            const carrierPerformance = createPerformanceMetric('TRANSPORTADORA');
-            const regionPerformance = createPerformanceMetric('Região');
-            const statePerformance = createPerformanceMetric('UF');
+            const carrierPerformance = createPerformanceMetric('carrier');
+            const regionPerformance = createPerformanceMetric('region');
+            const statePerformance = createPerformanceMetric('uf');
             
             const createReasonMetric = (filterFn, reasonKey) => {
                 const reasons = processedData.filter(filterFn).reduce((acc, curr) => {
-                    const reason = curr[reasonKey];
+                    const reason = getRowValue(curr, reasonKey);
                     if(reason) acc[reason] = (acc[reason] || 0) + 1;
                     return acc;
                 }, {});
                 return Object.entries(reasons).map(([reason, count]) => ({ reason, count })).sort((a, b) => b.count - a.count);
             }
 
-            const topDelayReasons = createReasonMetric(row => !row.isOnTime, 'Motivos');
-            const topDiscrepancyReasons = createReasonMetric(row => !row.isInFull, 'Divergência');
+            const topDelayReasons = createReasonMetric(row => !row.isOnTime, 'delayReason');
+            const topDiscrepancyReasons = createReasonMetric(row => !row.isInFull, 'discrepancyReason');
 
             const carrierPerformanceByReason = { delay: {}, discrepancy: {} };
             processedData.forEach(row => {
-                const carrier = row['TRANSPORTADORA'];
+                const carrier = getRowValue(row, 'carrier');
                 if (!carrier) return;
-                if (!row.isOnTime && row['Motivos']) {
-                    const reason = row['Motivos'];
-                    if (!carrierPerformanceByReason.delay[reason]) carrierPerformanceByReason.delay[reason] = {};
-                    carrierPerformanceByReason.delay[reason][carrier] = (carrierPerformanceByReason.delay[reason][carrier] || 0) + 1;
+                if (!row.isOnTime) {
+                    const reason = getRowValue(row, 'delayReason');
+                    if (reason) {
+                        if (!carrierPerformanceByReason.delay[reason]) carrierPerformanceByReason.delay[reason] = {};
+                        carrierPerformanceByReason.delay[reason][carrier] = (carrierPerformanceByReason.delay[reason][carrier] || 0) + 1;
+                    }
                 }
-                if (!row.isInFull && row['Divergência']) {
-                    const reason = row['Divergência'];
-                    if (!carrierPerformanceByReason.discrepancy[reason]) carrierPerformanceByReason.discrepancy[reason] = {};
-                    carrierPerformanceByReason.discrepancy[reason][carrier] = (carrierPerformanceByReason.discrepancy[reason][carrier] || 0) + 1;
+                if (!row.isInFull) {
+                    const reason = getRowValue(row, 'discrepancyReason');
+                    if (reason) {
+                        if (!carrierPerformanceByReason.discrepancy[reason]) carrierPerformanceByReason.discrepancy[reason] = {};
+                        carrierPerformanceByReason.discrepancy[reason][carrier] = (carrierPerformanceByReason.discrepancy[reason][carrier] || 0) + 1;
+                    }
                 }
             });
 
             // --- LÓGICA DO HISTÓRICO MENSAL (GRÁFICOS PRINCIPAIS - INDEPENDENTE DO FILTRO) ---
-            const yearForMonthlyCharts = allData.length > 0 ? Math.max(...allData.map(r => parseDate(r['Data Pedido']).getFullYear()).filter(y => !isNaN(y))) : new Date().getFullYear();
+            const yearForMonthlyCharts = allData.length > 0 ? Math.max(...allData.map(r => parseDate(getRowValue(r, 'pedidoDate')).getFullYear()).filter(y => !isNaN(y))) : new Date().getFullYear();
             
             const monthlyPerformanceData = allData.filter(row => {
-                const d = parseDate(row['Data Pedido']);
+                const d = parseDate(getRowValue(row, 'pedidoDate'));
                 return d && !isNaN(d.getTime()) && d.getFullYear() === yearForMonthlyCharts;
             })
             .reduce((acc, curr) => {
-                const rowDate = parseDate(curr['Data Pedido']);
+                const rowDate = parseDate(getRowValue(curr, 'pedidoDate'));
                 if (isNaN(rowDate.getTime())) return acc;
                 const monthKey = `${rowDate.getFullYear()}-${String(rowDate.getMonth() + 1).padStart(2, '0')}`;
                 if (!acc[monthKey]) acc[monthKey] = { total: 0, otifCount: 0, onTimeCount: 0, inFullCount: 0 };
                 
-                const isOnTime = curr['Status Entrega'] !== 'Fora do Prazo';
-                const isInFull = !curr['Entrega divergente?'] || String(curr['Entrega divergente?']).toLowerCase() !== 'sim';
+                const isOnTime = getRowValue(curr, 'status') !== 'Fora do Prazo';
+                const isInFull = !getRowValue(curr, 'divergent') || String(getRowValue(curr, 'divergent')).toLowerCase() !== 'sim';
 
                 acc[monthKey].total++;
                 if(isOnTime) acc[monthKey].onTimeCount++;
@@ -863,12 +1088,12 @@
             });
 
             // --- LÓGICA DO HISTÓRICO (DRILLDOWN TRANSPORTADORA - RESPEITA O FILTRO) ---
-            const yearForHistory = processedData.length > 0 ? Math.max(...processedData.map(r => parseDate(r['Data Pedido']).getFullYear()).filter(y => !isNaN(y))) : new Date().getFullYear();
+            const yearForHistory = processedData.length > 0 ? Math.max(...processedData.map(r => parseDate(getRowValue(r, 'pedidoDate')).getFullYear()).filter(y => !isNaN(y))) : new Date().getFullYear();
 
-            const historicalCarrierOtif = processedData.filter(row => parseDate(row['Data Pedido']).getFullYear() === yearForHistory)
+            const historicalCarrierOtif = processedData.filter(row => parseDate(getRowValue(row, 'pedidoDate')).getFullYear() === yearForHistory)
                 .reduce((acc, curr) => {
-                const carrier = curr['TRANSPORTADORA'];
-                const rowDate = parseDate(curr['Data Pedido']);
+                const carrier = getRowValue(curr, 'carrier');
+                const rowDate = parseDate(getRowValue(curr, 'pedidoDate'));
                 if (!carrier || isNaN(rowDate.getTime())) return acc;
 
                 const month = `${rowDate.getFullYear()}-${String(rowDate.getMonth() + 1).padStart(2, '0')}`;
@@ -895,7 +1120,7 @@
 
             processedData.forEach(row => {
                 if (!row.isOnTime) {
-                    const diasAtraso = parseInt(row['DIAS ATRASOS ÚTEIS'], 10);
+                    const diasAtraso = parseInt(getRowValue(row, 'delayDays'), 10);
                     if (isNaN(diasAtraso)) return;
 
                     let range = null;
@@ -906,9 +1131,9 @@
                     
                     if (range) {
                         delayDistribution[range]++;
-                        const region = row['Região'] || row['região'];
-                        const uf = row['UF'] || row['uf'];
-                        const carrier = row['TRANSPORTADORA'] || row['transportadora'];
+                        const region = getRowValue(row, 'region');
+                        const uf = getRowValue(row, 'uf');
+                        const carrier = getRowValue(row, 'carrier');
 
                         if (region) {
                             if (!delaysByRegion[range]) delaysByRegion[range] = {};
@@ -939,6 +1164,9 @@
                 delaysByRegion,
                 delaysByUF,
                 delaysByCarrierInUF,
+                deliveredTotal, deliveredOnTime, deliveredDelayed,
+                pendingTotal, pendingOnTime, pendingDelayed,
+                pendingDelayedByCarrierAndRange,
             };
         };
 
@@ -968,10 +1196,10 @@
                                  return obj;
                              }, {});
                          });
-                     } else if (fileExtension === 'xlsx') {
+                     } else if (fileExtension === 'xlsx' || fileExtension === 'xls') {
                          if (typeof XLSX === 'undefined') {
-                            importError.textContent = 'A biblioteca de leitura de planilhas (XLSX) não pôde ser carregada.';
-                            return;
+                             importError.textContent = 'A biblioteca de leitura de planilhas (XLSX) não pôde ser carregada.';
+                             return;
                          }
                          const data = new Uint8Array(e.target.result);
                          const workbook = XLSX.read(data, { type: 'array' });
@@ -983,10 +1211,14 @@
                          return;
                      }
                     
-                     if(rawData.length > 0 && !rawData[0]['Data Pedido']){
-                         importError.textContent = "A coluna 'Data Pedido' é necessária e não foi encontrada.";
-                         return;
-                     }
+                    if (rawData.length > 0) {
+                        const headers = Object.keys(rawData[0]);
+                        const hasDateColumn = KEY_MAPPINGS.pedidoDate.some(key => headers.includes(key));
+                        if (!hasDateColumn) {
+                            importError.textContent = `A coluna '${KEY_MAPPINGS.pedidoDate[0]}' é obrigatória e não foi encontrada no ficheiro.`;
+                            return;
+                        }
+                    }
 
                     showLoading(`A guardar ${rawData.length.toLocaleString('pt-BR')} linhas...`);
 
@@ -995,12 +1227,18 @@
                         const dataTx = db.transaction(DATA_STORE, 'readwrite');
                         const dataStore = dataTx.objectStore(DATA_STORE);
                         rawData.forEach(row => dataStore.add({ ...row, fileName: file.name }));
-                        await new Promise(resolve => dataTx.oncomplete = resolve);
+                        await new Promise((resolve, reject) => {
+                            dataTx.oncomplete = resolve;
+                            dataTx.onerror = reject;
+                        });
 
                         const fileTx = db.transaction(FILE_STORE, 'readwrite');
                         const fileStore = fileTx.objectStore(FILE_STORE);
                         fileStore.add({ name: file.name, uploadDate: new Date().toISOString() });
-                        await new Promise(resolve => fileTx.oncomplete = resolve);
+                        await new Promise((resolve, reject) => {
+                            fileTx.oncomplete = resolve;
+                            fileTx.onerror = reject;
+                        });
                     }
                     
                     allData.push(...rawData.map(r => ({...r, fileName: file.name})));
@@ -1019,7 +1257,7 @@
             
             if (fileExtension === 'csv') {
                 reader.readAsText(file, 'UTF-8');
-            } else if (fileExtension === 'xlsx') {
+            } else if (fileExtension === 'xlsx' || fileExtension === 'xls') {
                 reader.readAsArrayBuffer(file);
             } else {
                 importError.textContent = 'Formato de ficheiro não suportado. Use .csv ou .xlsx';
@@ -1126,6 +1364,18 @@
                 processFile(e.dataTransfer.files[0]);
             }
         });
+
+        window.addEventListener('scroll', () => {
+            if (window.scrollY > 300) {
+                backToTopBtn.classList.remove('hidden');
+            } else {
+                backToTopBtn.classList.add('hidden');
+            }
+        });
+
+        backToTopBtn.addEventListener('click', () => {
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        });
         
         document.body.addEventListener('click', (e) => {
             if (e.target.id === 'go-to-import-btn') {
@@ -1139,18 +1389,44 @@
                 clearAllData();
             }
             if(e.target.id === 'apply-filter-btn') {
-                appliedDateRange.start = document.getElementById('start-date').value;
-                appliedDateRange.end = document.getElementById('end-date').value;
+                const startDate = document.getElementById('start-date').value;
+                const endDate = document.getElementById('end-date').value;
+
+                if (startDate && endDate && startDate > endDate) {
+                    const messagesContainer = document.getElementById('dashboard-messages');
+                    if(messagesContainer) {
+                        messagesContainer.innerHTML = `<div class="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 mb-4 rounded-md" role="alert"><p class="font-bold">Data Inválida!</p><p>A data de início não pode ser posterior à data de fim.</p></div>`;
+                    }
+                    return;
+                }
+
+                appliedDateRange.start = startDate;
+                appliedDateRange.end = endDate;
                 navigateToState({ region: null, state: null, carrier: null, reason: null, delayRange: null, delayRegion: null, delayUF: null });
             }
             if(e.target.id === 'clear-filter-btn') {
                  appliedDateRange = { start: '', end: '' };
                  navigateToState({ region: null, state: null, carrier: null, reason: null, delayRange: null, delayRegion: null, delayUF: null });
             }
-            if(e.target.closest('.breadcrumb-link')) {
+            const breadcrumbLink = e.target.closest('.breadcrumb-link');
+            if(breadcrumbLink) {
                 e.preventDefault();
-                const state = JSON.parse(e.target.closest('.breadcrumb-link').dataset.state);
+                const state = JSON.parse(breadcrumbLink.dataset.state);
                 navigateToState(state);
+            }
+
+            if(e.target.id === 'drilldown-pending-delayed') {
+                e.preventDefault();
+                isPendingDelayedDrilldownActive = true;
+                // Reset other drilldown states to ensure clean view
+                selectedRegion = null;
+                selectedState = null;
+                selectedCarrier = null;
+                selectedReason = null;
+                selectedDelayRange = null;
+                selectedDelayRegion = null;
+                selectedDelayUF = null;
+                renderDashboard();
             }
 
             const clickableBar = e.target.closest('.clickable-bar');
@@ -1201,15 +1477,28 @@
                 const filesReq = fileTx.objectStore(FILE_STORE).getAll();
                 const dataReq = dataTx.objectStore(DATA_STORE).getAll();
                 
-                filesReq.onsuccess = () => {
-                    loadedFiles = filesReq.result;
-                    renderLoadedFiles();
-                };
+                await new Promise(resolve => {
+                    let filesDone = false, dataDone = false;
+                    const checkDone = () => {
+                        if (filesDone && dataDone) resolve();
+                    }
+
+                    filesReq.onsuccess = () => {
+                        loadedFiles = filesReq.result;
+                        filesDone = true;
+                        checkDone();
+                    };
+                    
+                    dataReq.onsuccess = () => {
+                        allData = dataReq.result;
+                        dataDone = true;
+                        checkDone();
+                    };
+                });
                 
-                dataReq.onsuccess = () => {
-                    allData = dataReq.result;
-                    renderDashboard();
-                };
+                renderLoadedFiles();
+                renderDashboard();
+
             } catch (err) {
                 isDbAvailable = false;
                 console.error("IndexedDB não está disponível. Os dados não serão guardados.", err);
@@ -1235,9 +1524,5 @@
     </script>
 </body>
 </html>
-
-
-
-
 
 
