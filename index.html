@@ -6,6 +6,7 @@
     <title>Dashboard de Análise OTIF</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script type="text/javascript" src="https://www.gstatic.com/charts/loader.js"></script>
     <style>
         /* Estilos adicionais para uma melhor aparência */
         body {
@@ -128,12 +129,15 @@
         let selectedDelayRegion = null;
         let selectedDelayUF = null;
         let isPendingDelayedDrilldownActive = false;
+        let isMapDrilldownActive = false;
         let isDbAvailable = true;
         let dbPromise;
 
         // --- MAPEAMENTO DE COLUNAS (para robustez) ---
         const KEY_MAPPINGS = {
+            invoiceNumber: ['Numero NF', 'numero nf', 'NUMERO NF'],
             pedidoDate: ['Data Pedido', 'data pedido', 'DATA PEDIDO', 'Data do Pedido'],
+            expeditionDate: ['Data expedição', 'data expedição', 'DATA EXPEDIÇÃO'],
             deliveryDate: ['Data de entrega', 'data de entrega', 'DATA DE ENTREGA'],
             status: ['Status Entrega', 'status entrega', 'STATUS ENTREGA'],
             divergent: ['Entrega divergente?', 'entrega divergente?', 'ENTREGA DIVERGENTE?', 'Divergência de Entrega'],
@@ -155,6 +159,31 @@
                 }
             }
             return undefined;
+        };
+
+        const stateMappings = {
+            'AC': { region: 'Norte', code: 'BR-AC' }, 'AL': { region: 'Nordeste', code: 'BR-AL' },
+            'AP': { region: 'Norte', code: 'BR-AP' }, 'AM': { region: 'Norte', code: 'BR-AM' },
+            'BA': { region: 'Nordeste', code: 'BR-BA' }, 'CE': { region: 'Nordeste', code: 'BR-CE' },
+            'DF': { region: 'Centro-Oeste', code: 'BR-DF' }, 'ES': { region: 'Sudeste', code: 'BR-ES' },
+            'GO': { region: 'Centro-Oeste', code: 'BR-GO' }, 'MA': { region: 'Nordeste', code: 'BR-MA' },
+            'MT': { region: 'Centro-Oeste', code: 'BR-MT' }, 'MS': { region: 'Centro-Oeste', code: 'BR-MS' },
+            'MG': { region: 'Sudeste', code: 'BR-MG' }, 'PA': { region: 'Norte', code: 'BR-PA' },
+            'PB': { region: 'Nordeste', code: 'BR-PB' }, 'PR': { region: 'Sul', code: 'BR-PR' },
+            'PE': { region: 'Nordeste', code: 'BR-PE' }, 'PI': { region: 'Nordeste', code: 'BR-PI' },
+            'RJ': { region: 'Sudeste', code: 'BR-RJ' }, 'RN': { region: 'Nordeste', code: 'BR-RN' },
+            'RS': { region: 'Sul', code: 'BR-RS' }, 'RO': { region: 'Norte', code: 'BR-RO' },
+            'RR': { region: 'Norte', code: 'BR-RR' }, 'SC': { region: 'Sul', code: 'BR-SC' },
+            'SP': { region: 'Sudeste', code: 'BR-SP' }, 'SE': { region: 'Nordeste', code: 'BR-SE' },
+            'TO': { region: 'Norte', code: 'BR-TO' }
+        };
+
+        const regionInfo = {
+            'Sul':        { colorIndex: 1, position: { top: '82%', left: '48%' } },
+            'Sudeste':    { colorIndex: 2, position: { top: '70%', left: '60%' } },
+            'Centro-Oeste': { colorIndex: 3, position: { top: '55%', left: '45%' } },
+            'Nordeste':   { colorIndex: 4, position: { top: '40%', left: '70%' } },
+            'Norte':      { colorIndex: 5, position: { top: '25%', left: '30%' } }
         };
 
         // --- ELEMENTOS DO DOM ---
@@ -179,6 +208,9 @@
         const backToTopBtn = document.getElementById('back-to-top');
 
         let confirmAction = null;
+
+        // Carrega a biblioteca de gráficos do Google
+        google.charts.load('current', { 'packages':['geochart'] });
 
         // --- BASE DE DADOS INDEXEDDB ---
         const initDb = () => {
@@ -258,7 +290,8 @@
         };
 
         const navigateToState = (newState) => {
-            isPendingDelayedDrilldownActive = false; // Reset drilldown state on any navigation
+            isPendingDelayedDrilldownActive = false;
+            isMapDrilldownActive = false;
             selectedRegion = newState.region;
             selectedState = newState.state;
             selectedCarrier = newState.carrier;
@@ -323,7 +356,9 @@
             
             let viewHtml = '';
 
-            if (isPendingDelayedDrilldownActive) {
+            if (isMapDrilldownActive) {
+                viewHtml = renderRegionExpeditionView(selectedRegion);
+            } else if (isPendingDelayedDrilldownActive) {
                 viewHtml = renderPendingDelayedDrilldownView();
             } else if (selectedState) {
                  viewHtml = renderStateDetailView(selectedRegion, selectedState);
@@ -351,6 +386,17 @@
                     ${viewHtml}
                 </div>
             `;
+
+            // Draw charts after HTML is rendered
+            if (!isMapDrilldownActive && !isPendingDelayedDrilldownActive && !selectedState && !selectedRegion && !selectedCarrier && !selectedReason && !selectedDelayRange) {
+                // Use a timeout to ensure the DOM is ready for the chart
+                setTimeout(() => {
+                    const metrics = calculateMetrics();
+                    if (metrics && metrics.mapData.length > 1) { // Check if there is data to draw
+                        drawMapChart(metrics.mapData);
+                    }
+                }, 0);
+            }
         };
 
         const renderMainDashboardView = () => {
@@ -366,6 +412,7 @@
             return `
                 ${renderDashboardHeader(metrics)}
                 ${renderDeliveryStatusCards(metrics)}
+                ${renderMapChart(metrics)}
                 <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-6">
                     ${renderSingleMetricChart(metrics.monthlyPerformance, 'Performance Mensal - OTIF', 'otifRate', metrics.yearForHistory, OTIF_TARGET)}
                     ${renderSingleMetricChart(metrics.monthlyPerformance, 'Performance Mensal - On Time', 'onTimeRate', metrics.yearForHistory, ONTIME_TARGET)}
@@ -420,18 +467,28 @@
             
             let terminalCrumbLabel = '';
 
-            if (selectedRegion) crumbs.push({ label: selectedRegion, state: { ...initialState, region: selectedRegion } });
-            if (selectedState) crumbs.push({ label: selectedState, state: { ...initialState, region: selectedRegion, state: selectedState } });
-
-            if(selectedCarrier) terminalCrumbLabel = `Transportadora: ${selectedCarrier}`;
-            if(selectedReason) terminalCrumbLabel = `Motivo: ${selectedReason.reason}`;
-
-            if(selectedDelayRange) crumbs.push({ label: `Atraso: ${selectedDelayRange}`, state: { ...initialState, delayRange: selectedDelayRange } });
-            if(selectedDelayRegion) crumbs.push({ label: selectedDelayRegion, state: { ...initialState, delayRange: selectedDelayRange, delayRegion: selectedDelayRegion } });
-            if(selectedDelayUF) terminalCrumbLabel = selectedDelayUF;
-
-            if (isPendingDelayedDrilldownActive) {
+            if (isMapDrilldownActive) {
+                terminalCrumbLabel = `Histórico da Região: ${selectedRegion}`;
+            } else if (isPendingDelayedDrilldownActive) {
                 terminalCrumbLabel = 'Pendentes em Atraso';
+            } else if (selectedDelayUF) {
+                crumbs.push({ label: `Atraso: ${selectedDelayRange}`, state: { ...initialState, delayRange: selectedDelayRange } });
+                crumbs.push({ label: selectedDelayRegion, state: { ...initialState, delayRange: selectedDelayRange, delayRegion: selectedDelayRegion } });
+                terminalCrumbLabel = selectedDelayUF;
+            } else if (selectedDelayRegion) {
+                 crumbs.push({ label: `Atraso: ${selectedDelayRange}`, state: { ...initialState, delayRange: selectedDelayRange } });
+                 terminalCrumbLabel = selectedDelayRegion;
+            } else if (selectedDelayRange) {
+                 terminalCrumbLabel = `Atraso: ${selectedDelayRange}`;
+            } else if (selectedReason) {
+                terminalCrumbLabel = `Motivo: ${selectedReason.reason}`;
+            } else if (selectedCarrier) {
+                terminalCrumbLabel = `Transportadora: ${selectedCarrier}`;
+            } else if (selectedState) {
+                crumbs.push({ label: selectedRegion, state: { ...initialState, region: selectedRegion } });
+                terminalCrumbLabel = selectedState;
+            } else if (selectedRegion) {
+                terminalCrumbLabel = selectedRegion;
             }
 
             if(terminalCrumbLabel) crumbs.push({label: terminalCrumbLabel, state: {}});
@@ -666,6 +723,32 @@
                     </div>
                 </div>`;
         };
+
+        const renderMapChart = (metrics) => {
+            if (!metrics.mapLabelData || metrics.mapLabelData.every(r => r.count === 0)) {
+                return `<div class="bg-white p-6 rounded-lg shadow-md"><h3 class="text-lg font-semibold mb-4 text-gray-700">Distribuição por Região</h3><p class="text-gray-500">Não há dados de notas fiscais por região para exibir.</p></div>`;
+            }
+        
+            return `
+                <div class="bg-white p-6 rounded-lg shadow-md">
+                    <h3 class="text-lg font-semibold mb-4 text-gray-700">Distribuição de Notas Fiscais por Região</h3>
+                    <div class="relative w-full mx-auto" style="max-width: 600px;">
+                        <div id="geochart-brazil" class="w-full" style="aspect-ratio: 1/1;"></div>
+                        ${metrics.mapLabelData.map(region => {
+                            if (region.count === 0) return '';
+                            return `
+                            <div class="absolute p-2 bg-black bg-opacity-60 text-white rounded-md text-xs pointer-events-none transform -translate-x-1/2 -translate-y-1/2 text-center" 
+                                 style="top: ${region.position.top}; left: ${region.position.left};">
+                                <p class="font-bold">${region.name}</p>
+                                <p>${region.count.toLocaleString('pt-BR')} NFs</p>
+                                <p>(${region.percentage})</p>
+                            </div>
+                            `
+                        }).join('')}
+                    </div>
+                </div>
+            `;
+        };
         
         const renderRegionDetailView = (region) => {
             const regionData = getFilteredData().filter(row => getRowValue(row, 'region') === region);
@@ -896,6 +979,50 @@
             return html;
         };
 
+        const renderRegionExpeditionView = (region) => {
+            const metrics = calculateMetrics();
+            const yearForHistory = new Date().getFullYear(); // You can make this dynamic if needed
+            const expeditionData = metrics.monthlyExpeditionsByRegion[region] || {};
+            const totalInvoices = Object.values(expeditionData).reduce((sum, count) => sum + count, 0);
+
+            if (totalInvoices === 0) {
+                return `<div class="bg-white p-6 rounded-lg shadow-md"><h3 class="text-lg font-semibold mb-4 text-gray-700">Histórico de Expedição para ${region}</h3><p class="text-gray-500">Nenhum dado de expedição encontrado para esta região no período selecionado.</p></div>`;
+            }
+
+            const months = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+            
+            const chartData = months.map((monthName, index) => {
+                const monthKey = `${yearForHistory}-${String(index + 1).padStart(2, '0')}`;
+                const count = expeditionData[monthKey] || 0;
+                return {
+                    label: monthName,
+                    value: count,
+                    percentage: totalInvoices > 0 ? (count / totalInvoices * 100).toFixed(1) : 0
+                };
+            });
+            const maxValue = Math.max(...chartData.map(item => item.value));
+
+            return `
+                <div class="bg-white p-6 rounded-lg shadow-md">
+                    <h3 class="text-lg font-semibold mb-4 text-gray-700">Histórico Mensal de Expedição para <span class="text-blue-600">${region}</span> (${yearForHistory})</h3>
+                    <div class="space-y-4">
+                        ${chartData.map(item => `
+                            <div class="flex items-center group">
+                                <p class="w-1/5 text-sm text-gray-600 truncate pr-2">${item.label}</p>
+                                <div class="w-4/5 flex items-center">
+                                    <div class="w-full bg-gray-200 rounded-full h-6">
+                                        <div class="bg-blue-500 h-6 rounded-full text-white text-xs flex items-center justify-end pr-2" style="width: ${maxValue > 0 ? (item.value / maxValue) * 100 : 0}%;">
+                                            ${item.value.toLocaleString('pt-BR')}
+                                        </div>
+                                    </div>
+                                    <p class="w-20 text-right text-sm font-semibold text-gray-700 pl-3">${item.percentage}%</p>
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            `;
+        };
 
         // --- LÓGICA DE DADOS ---
         const parseDate = (rowDateStr) => {
@@ -1052,7 +1179,77 @@
                 }
             });
 
-            // --- LÓGICA DO HISTÓRICO MENSAL (GRÁFICOS PRINCIPAIS - INDEPENDENTE DO FILTRO) ---
+            // --- LÓGICA DO MAPA ---
+            const invoicesByUF = {};
+            const uniqueInvoicesByUF = new Set();
+            sourceData.forEach(row => {
+                const uf = getRowValue(row, 'uf');
+                const invoice = getRowValue(row, 'invoiceNumber');
+                if (uf && invoice && stateMappings[uf]) {
+                    const uniqueKey = `${uf}-${invoice}`;
+                    if (!uniqueInvoicesByUF.has(uniqueKey)) {
+                        invoicesByUF[uf] = (invoicesByUF[uf] || 0) + 1;
+                        uniqueInvoicesByUF.add(uniqueKey);
+                    }
+                }
+            });
+
+            const mapData = [['State', 'Region']];
+            for (const uf in stateMappings) {
+                const mapping = stateMappings[uf];
+                mapData.push([mapping.code, regionInfo[mapping.region].colorIndex]);
+            }
+
+            const invoicesByRegion = {};
+            for (const uf in invoicesByUF) {
+                const region = stateMappings[uf].region;
+                invoicesByRegion[region] = (invoicesByRegion[region] || 0) + invoicesByUF[uf];
+            }
+
+            const totalInvoices = Object.values(invoicesByRegion).reduce((sum, count) => sum + count, 0);
+
+            const mapLabelData = [];
+            for (const region in regionInfo) {
+                const count = invoicesByRegion[region] || 0;
+                const percentage = totalInvoices > 0 ? ((count / totalInvoices) * 100).toFixed(1) : 0;
+                mapLabelData.push({
+                    name: region,
+                    count: count,
+                    percentage: `${percentage}%`,
+                    position: regionInfo[region].position
+                });
+            }
+
+            // --- LÓGICA DO HISTÓRICO MENSAL DE EXPEDIÇÃO POR REGIÃO ---
+            const monthlyExpeditionsByRegion = {};
+            const uniqueExpeditions = new Set();
+            sourceData.forEach(row => {
+                const region = getRowValue(row, 'region');
+                const expeditionDateStr = getRowValue(row, 'expeditionDate');
+                const invoice = getRowValue(row, 'invoiceNumber');
+
+                if (region && expeditionDateStr && invoice) {
+                    const expeditionDate = parseDate(expeditionDateStr);
+                    if (isNaN(expeditionDate.getTime())) return;
+                    
+                    const year = expeditionDate.getFullYear();
+                    const monthKey = `${year}-${String(expeditionDate.getMonth() + 1).padStart(2, '0')}`;
+                    const uniqueKey = `${region}-${monthKey}-${invoice}`;
+
+                    if (!uniqueExpeditions.has(uniqueKey)) {
+                         if (!monthlyExpeditionsByRegion[region]) {
+                            monthlyExpeditionsByRegion[region] = {};
+                        }
+                        if (!monthlyExpeditionsByRegion[region][monthKey]) {
+                            monthlyExpeditionsByRegion[region][monthKey] = 0;
+                        }
+                        monthlyExpeditionsByRegion[region][monthKey]++;
+                        uniqueExpeditions.add(uniqueKey);
+                    }
+                }
+            });
+
+            // --- LÓGICA DO HISTÓRICO MENSAL ---
             const yearForMonthlyCharts = allData.length > 0 ? Math.max(...allData.map(r => parseDate(getRowValue(r, 'pedidoDate')).getFullYear()).filter(y => !isNaN(y))) : new Date().getFullYear();
             
             const monthlyPerformanceData = allData.filter(row => {
@@ -1087,7 +1284,6 @@
                 } : { month: monthKey, otifRate: undefined, onTimeRate: undefined, inFullRate: undefined, totalCount: 0 };
             });
 
-            // --- LÓGICA DO HISTÓRICO (DRILLDOWN TRANSPORTADORA - RESPEITA O FILTRO) ---
             const yearForHistory = processedData.length > 0 ? Math.max(...processedData.map(r => parseDate(getRowValue(r, 'pedidoDate')).getFullYear()).filter(y => !isNaN(y))) : new Date().getFullYear();
 
             const historicalCarrierOtif = processedData.filter(row => parseDate(getRowValue(row, 'pedidoDate')).getFullYear() === yearForHistory)
@@ -1167,8 +1363,57 @@
                 deliveredTotal, deliveredOnTime, deliveredDelayed,
                 pendingTotal, pendingOnTime, pendingDelayed,
                 pendingDelayedByCarrierAndRange,
+                mapData,
+                mapLabelData,
+                monthlyExpeditionsByRegion
             };
         };
+
+        const drawMapChart = (mapData) => {
+            if (!google.visualization || !google.visualization.GeoChart) {
+                google.charts.setOnLoadCallback(() => drawMapChart(mapData));
+                return;
+            }
+
+            const data = google.visualization.arrayToDataTable(mapData);
+            
+            const options = {
+                region: 'BR',
+                displayMode: 'regions',
+                resolution: 'provinces',
+                colorAxis: {
+                    values: [1, 2, 3, 4, 5],
+                    colors: ['#34D399', '#60A5FA', '#FBBF24', '#F87171', '#A78BFA'] // Verde, Azul, Amarelo, Vermelho, Roxo
+                },
+                backgroundColor: '#fff',
+                datalessRegionColor: '#f8fafc',
+                defaultColor: '#f8fafc',
+                legend: 'none',
+                tooltip: { trigger: 'none' }
+            };
+            
+            const chartContainer = document.getElementById('geochart-brazil');
+            if (chartContainer) {
+                const chart = new google.visualization.GeoChart(chartContainer);
+
+                google.visualization.events.addListener(chart, 'select', () => {
+                    const selection = chart.getSelection();
+                    if (selection.length > 0) {
+                        const selectedItem = selection[0];
+                        const regionColorIndex = data.getValue(selectedItem.row, 1);
+                        const regionNameFound = Object.keys(regionInfo).find(r => regionInfo[r].colorIndex === regionColorIndex);
+
+                        if(regionNameFound){
+                            isMapDrilldownActive = true;
+                            selectedRegion = regionNameFound;
+                            renderDashboard();
+                        }
+                    }
+                });
+
+                chart.draw(data, options);
+            }
+        }
 
         const processFile = async (file) => {
              if (!file) return;
@@ -1419,6 +1664,7 @@
                 e.preventDefault();
                 isPendingDelayedDrilldownActive = true;
                 // Reset other drilldown states to ensure clean view
+                isMapDrilldownActive = false;
                 selectedRegion = null;
                 selectedState = null;
                 selectedCarrier = null;
@@ -1524,5 +1770,4 @@
     </script>
 </body>
 </html>
-
 
