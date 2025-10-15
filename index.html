@@ -838,8 +838,7 @@
         };
 
         const renderCarrierDetailView = (carrierName) => {
-            const data = getFilteredData();
-            const metrics = calculateMetrics(data);
+            const metrics = calculateMetrics(allData);
             const historicalData = metrics.historicalCarrierOtif;
             const year = metrics.yearForHistory;
             
@@ -980,13 +979,13 @@
         };
 
         const renderRegionExpeditionView = (region) => {
-            const metrics = calculateMetrics();
-            const yearForHistory = new Date().getFullYear(); // You can make this dynamic if needed
-            const expeditionData = metrics.monthlyExpeditionsByRegion[region] || {};
-            const totalInvoices = Object.values(expeditionData).reduce((sum, count) => sum + count, 0);
+            const fullMetrics = calculateMetrics(allData); // Always use all data for this view
+            const yearForHistory = new Date().getFullYear();
+            const expeditionData = fullMetrics.monthlyExpeditionsByRegion[region] || {};
+            const monthlyTotals = fullMetrics.monthlyExpeditionsTotal;
 
-            if (totalInvoices === 0) {
-                return `<div class="bg-white p-6 rounded-lg shadow-md"><h3 class="text-lg font-semibold mb-4 text-gray-700">Histórico de Expedição para ${region}</h3><p class="text-gray-500">Nenhum dado de expedição encontrado para esta região no período selecionado.</p></div>`;
+            if (Object.keys(expeditionData).length === 0) {
+                return `<div class="bg-white p-6 rounded-lg shadow-md"><h3 class="text-lg font-semibold mb-4 text-gray-700">Histórico de Expedição para ${region}</h3><p class="text-gray-500">Nenhum dado de expedição encontrado para esta região no ano de ${yearForHistory}.</p></div>`;
             }
 
             const months = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
@@ -994,10 +993,11 @@
             const chartData = months.map((monthName, index) => {
                 const monthKey = `${yearForHistory}-${String(index + 1).padStart(2, '0')}`;
                 const count = expeditionData[monthKey] || 0;
+                const totalOfMonth = monthlyTotals[monthKey] || 0;
                 return {
                     label: monthName,
                     value: count,
-                    percentage: totalInvoices > 0 ? (count / totalInvoices * 100).toFixed(1) : 0
+                    percentage: totalOfMonth > 0 ? (count / totalOfMonth * 100).toFixed(1) : 0
                 };
             });
             const maxValue = Math.max(...chartData.map(item => item.value));
@@ -1005,6 +1005,7 @@
             return `
                 <div class="bg-white p-6 rounded-lg shadow-md">
                     <h3 class="text-lg font-semibold mb-4 text-gray-700">Histórico Mensal de Expedição para <span class="text-blue-600">${region}</span> (${yearForHistory})</h3>
+                    <p class="text-xs text-gray-500 mb-4">Os percentuais são calculados com base no total de expedições de cada mês em todas as regiões.</p>
                     <div class="space-y-4">
                         ${chartData.map(item => `
                             <div class="flex items-center group">
@@ -1061,7 +1062,7 @@
         const calculateMetrics = (data) => {
             const sourceData = data || getFilteredData();
 
-            // Lógica para pedidos entregues/pendentes
+            // --- CÁLCULOS FILTRADOS ---
             const dataForStatusMetrics = sourceData.filter(row => getRowValue(row, 'delayReason') !== 'Desistência de compra');
             let deliveredTotal = 0, deliveredOnTime = 0, deliveredDelayed = 0;
             let pendingTotal = 0, pendingOnTime = 0, pendingDelayed = 0;
@@ -1071,14 +1072,12 @@
                 const status = getRowValue(row, 'status');
                 const isOnTime = status === 'Dentro do Prazo';
 
-                if (deliveryDate && String(deliveryDate).trim() !== '') { // Entregue
+                if (deliveryDate && String(deliveryDate).trim() !== '') {
                     deliveredTotal++;
-                    if (isOnTime) deliveredOnTime++;
-                    else deliveredDelayed++;
-                } else { // Pendente
+                    if (isOnTime) deliveredOnTime++; else deliveredDelayed++;
+                } else {
                     pendingTotal++;
-                    if (isOnTime) pendingOnTime++;
-                    else pendingDelayed++;
+                    if (isOnTime) pendingOnTime++; else pendingDelayed++;
                 }
             });
 
@@ -1110,8 +1109,6 @@
                 }
             });
 
-
-            // Lógica original para as outras métricas (mantém a base original)
             const processedData = sourceData.map(row => {
                 const isOnTime = getRowValue(row, 'status') !== 'Fora do Prazo';
                 const isInFull = !getRowValue(row, 'divergent') || String(getRowValue(row, 'divergent')).toLowerCase() !== 'sim';
@@ -1178,8 +1175,7 @@
                     }
                 }
             });
-
-            // --- LÓGICA DO MAPA ---
+            
             const invoicesByUF = {};
             const uniqueInvoicesByUF = new Set();
             sourceData.forEach(row => {
@@ -1193,12 +1189,6 @@
                     }
                 }
             });
-
-            const mapData = [['State', 'Region']];
-            for (const uf in stateMappings) {
-                const mapping = stateMappings[uf];
-                mapData.push([mapping.code, regionInfo[mapping.region].colorIndex]);
-            }
 
             const invoicesByRegion = {};
             for (const uf in invoicesByUF) {
@@ -1220,96 +1210,7 @@
                 });
             }
 
-            // --- LÓGICA DO HISTÓRICO MENSAL DE EXPEDIÇÃO POR REGIÃO ---
-            const monthlyExpeditionsByRegion = {};
-            const uniqueExpeditions = new Set();
-            sourceData.forEach(row => {
-                const region = getRowValue(row, 'region');
-                const expeditionDateStr = getRowValue(row, 'expeditionDate');
-                const invoice = getRowValue(row, 'invoiceNumber');
-
-                if (region && expeditionDateStr && invoice) {
-                    const expeditionDate = parseDate(expeditionDateStr);
-                    if (isNaN(expeditionDate.getTime())) return;
-                    
-                    const year = expeditionDate.getFullYear();
-                    const monthKey = `${year}-${String(expeditionDate.getMonth() + 1).padStart(2, '0')}`;
-                    const uniqueKey = `${region}-${monthKey}-${invoice}`;
-
-                    if (!uniqueExpeditions.has(uniqueKey)) {
-                         if (!monthlyExpeditionsByRegion[region]) {
-                            monthlyExpeditionsByRegion[region] = {};
-                        }
-                        if (!monthlyExpeditionsByRegion[region][monthKey]) {
-                            monthlyExpeditionsByRegion[region][monthKey] = 0;
-                        }
-                        monthlyExpeditionsByRegion[region][monthKey]++;
-                        uniqueExpeditions.add(uniqueKey);
-                    }
-                }
-            });
-
-            // --- LÓGICA DO HISTÓRICO MENSAL ---
-            const yearForMonthlyCharts = allData.length > 0 ? Math.max(...allData.map(r => parseDate(getRowValue(r, 'pedidoDate')).getFullYear()).filter(y => !isNaN(y))) : new Date().getFullYear();
-            
-            const monthlyPerformanceData = allData.filter(row => {
-                const d = parseDate(getRowValue(row, 'pedidoDate'));
-                return d && !isNaN(d.getTime()) && d.getFullYear() === yearForMonthlyCharts;
-            })
-            .reduce((acc, curr) => {
-                const rowDate = parseDate(getRowValue(curr, 'pedidoDate'));
-                if (isNaN(rowDate.getTime())) return acc;
-                const monthKey = `${rowDate.getFullYear()}-${String(rowDate.getMonth() + 1).padStart(2, '0')}`;
-                if (!acc[monthKey]) acc[monthKey] = { total: 0, otifCount: 0, onTimeCount: 0, inFullCount: 0 };
-                
-                const isOnTime = getRowValue(curr, 'status') !== 'Fora do Prazo';
-                const isInFull = !getRowValue(curr, 'divergent') || String(getRowValue(curr, 'divergent')).toLowerCase() !== 'sim';
-
-                acc[monthKey].total++;
-                if(isOnTime) acc[monthKey].onTimeCount++;
-                if(isInFull) acc[monthKey].inFullCount++;
-                if (isOnTime && isInFull) acc[monthKey].otifCount++;
-                return acc;
-            }, {});
-
-            const monthlyPerformance = Array.from({ length: 12 }).map((_, index) => {
-                const monthKey = `${yearForMonthlyCharts}-${String(index + 1).padStart(2, '0')}`;
-                const data = monthlyPerformanceData[monthKey];
-                return data && data.total > 0 ? {
-                    month: monthKey,
-                    otifRate: (data.otifCount / data.total) * 100,
-                    onTimeRate: (data.onTimeCount / data.total) * 100,
-                    inFullRate: (data.inFullCount / data.total) * 100,
-                    totalCount: data.total
-                } : { month: monthKey, otifRate: undefined, onTimeRate: undefined, inFullRate: undefined, totalCount: 0 };
-            });
-
-            const yearForHistory = processedData.length > 0 ? Math.max(...processedData.map(r => parseDate(getRowValue(r, 'pedidoDate')).getFullYear()).filter(y => !isNaN(y))) : new Date().getFullYear();
-
-            const historicalCarrierOtif = processedData.filter(row => parseDate(getRowValue(row, 'pedidoDate')).getFullYear() === yearForHistory)
-                .reduce((acc, curr) => {
-                const carrier = getRowValue(curr, 'carrier');
-                const rowDate = parseDate(getRowValue(curr, 'pedidoDate'));
-                if (!carrier || isNaN(rowDate.getTime())) return acc;
-
-                const month = `${rowDate.getFullYear()}-${String(rowDate.getMonth() + 1).padStart(2, '0')}`;
-                if (!acc[carrier]) acc[carrier] = {};
-                if (!acc[carrier][month]) acc[carrier][month] = { total: 0, otifCount: 0 };
-
-                acc[carrier][month].total++;
-                if (curr.isOnTime && curr.isInFull) acc[carrier][month].otifCount++;
-                
-                return acc;
-            }, {});
-            Object.keys(historicalCarrierOtif).forEach(carrier => {
-                Object.keys(historicalCarrierOtif[carrier]).forEach(month => {
-                    const { total, otifCount } = historicalCarrierOtif[carrier][month];
-                    historicalCarrierOtif[carrier][month] = { value: (otifCount / total) * 100, totalCount: total };
-                });
-            });
-
             const delayDistribution = { "1 dia": 0, "2 a 3 dias": 0, "4 a 5 dias": 0, "6 dias ou mais": 0 };
-            
             const delaysByRegion = {};
             const delaysByUF = {};
             const delaysByCarrierInUF = {};
@@ -1348,14 +1249,115 @@
                     }
                 }
             });
-
             const delayDistributionData = Object.entries(delayDistribution).map(([label, count]) => ({ label, value: count }));
+
+            // --- CÁLCULOS HISTÓRICOS (NÃO FILTRADOS) ---
+            const yearForHistory = allData.length > 0 ? Math.max(...allData.map(r => {
+                const d = parseDate(getRowValue(r, 'pedidoDate'));
+                return d && !isNaN(d.getTime()) ? d.getFullYear() : -1;
+            }).filter(y => y !== -1)) : new Date().getFullYear();
+            
+            const monthlyPerformanceData = allData.filter(row => {
+                const d = parseDate(getRowValue(row, 'pedidoDate'));
+                return d && !isNaN(d.getTime()) && d.getFullYear() === yearForHistory;
+            }).reduce((acc, curr) => {
+                const rowDate = parseDate(getRowValue(curr, 'pedidoDate'));
+                if (isNaN(rowDate.getTime())) return acc;
+                const monthKey = `${yearForHistory}-${String(rowDate.getMonth() + 1).padStart(2, '0')}`;
+                if (!acc[monthKey]) acc[monthKey] = { total: 0, otifCount: 0, onTimeCount: 0, inFullCount: 0 };
+                const isOnTime = getRowValue(curr, 'status') !== 'Fora do Prazo';
+                const isInFull = !getRowValue(curr, 'divergent') || String(getRowValue(curr, 'divergent')).toLowerCase() !== 'sim';
+                acc[monthKey].total++;
+                if(isOnTime) acc[monthKey].onTimeCount++;
+                if(isInFull) acc[monthKey].inFullCount++;
+                if (isOnTime && isInFull) acc[monthKey].otifCount++;
+                return acc;
+            }, {});
+
+            const monthlyPerformance = Array.from({ length: 12 }).map((_, index) => {
+                const monthKey = `${yearForHistory}-${String(index + 1).padStart(2, '0')}`;
+                const data = monthlyPerformanceData[monthKey];
+                return data && data.total > 0 ? {
+                    month: monthKey,
+                    otifRate: (data.otifCount / data.total) * 100,
+                    onTimeRate: (data.onTimeCount / data.total) * 100,
+                    inFullRate: (data.inFullCount / data.total) * 100,
+                    totalCount: data.total
+                } : { month: monthKey, otifRate: undefined, onTimeRate: undefined, inFullRate: undefined, totalCount: 0 };
+            });
+
+            const allDataProcessed = allData.map(row => {
+                const isOnTime = getRowValue(row, 'status') !== 'Fora do Prazo';
+                const isInFull = !getRowValue(row, 'divergent') || String(getRowValue(row, 'divergent')).toLowerCase() !== 'sim';
+                return { ...row, isOnTime, isInFull };
+            });
+
+            const historicalCarrierOtif = allDataProcessed.filter(row => {
+                const d = parseDate(getRowValue(row, 'pedidoDate'));
+                return d && !isNaN(d.getTime()) && d.getFullYear() === yearForHistory;
+            }).reduce((acc, curr) => {
+                const carrier = getRowValue(curr, 'carrier');
+                const rowDate = parseDate(getRowValue(curr, 'pedidoDate'));
+                if (!carrier || isNaN(rowDate.getTime())) return acc;
+                const month = `${yearForHistory}-${String(rowDate.getMonth() + 1).padStart(2, '0')}`;
+                if (!acc[carrier]) acc[carrier] = {};
+                if (!acc[carrier][month]) acc[carrier][month] = { total: 0, otifCount: 0 };
+                acc[carrier][month].total++;
+                if (curr.isOnTime && curr.isInFull) acc[carrier][month].otifCount++;
+                return acc;
+            }, {});
+            Object.keys(historicalCarrierOtif).forEach(carrier => {
+                Object.keys(historicalCarrierOtif[carrier]).forEach(month => {
+                    const { total, otifCount } = historicalCarrierOtif[carrier][month];
+                    historicalCarrierOtif[carrier][month] = { value: (otifCount / total) * 100, totalCount: total };
+                });
+            });
+
+            const monthlyExpeditionsByRegion = {};
+            const monthlyExpeditionsTotal = {};
+            const uniqueInvoicesByMonth = new Set();
+            const uniqueInvoicesByRegionMonth = new Set();
+            allData.forEach(row => {
+                const expeditionDateStr = getRowValue(row, 'expeditionDate');
+                const invoice = getRowValue(row, 'invoiceNumber');
+                if (!expeditionDateStr || !invoice) return;
+
+                const expeditionDate = parseDate(expeditionDateStr);
+                if (isNaN(expeditionDate.getTime())) return;
+                
+                const year = expeditionDate.getFullYear();
+                const monthKey = `${year}-${String(expeditionDate.getMonth() + 1).padStart(2, '0')}`;
+                
+                const totalKey = `${monthKey}-${invoice}`;
+                if (!uniqueInvoicesByMonth.has(totalKey)) {
+                    monthlyExpeditionsTotal[monthKey] = (monthlyExpeditionsTotal[monthKey] || 0) + 1;
+                    uniqueInvoicesByMonth.add(totalKey);
+                }
+
+                const region = getRowValue(row, 'region');
+                if (region) {
+                    const regionKey = `${region}-${monthKey}-${invoice}`;
+                    if (!uniqueInvoicesByRegionMonth.has(regionKey)) {
+                        if (!monthlyExpeditionsByRegion[region]) {
+                            monthlyExpeditionsByRegion[region] = {};
+                        }
+                        monthlyExpeditionsByRegion[region][monthKey] = (monthlyExpeditionsByRegion[region][monthKey] || 0) + 1;
+                        uniqueInvoicesByRegionMonth.add(regionKey);
+                    }
+                }
+            });
+
+            const mapData = [['State', 'Region']];
+            for (const uf in stateMappings) {
+                mapData.push([stateMappings[uf].code, regionInfo[stateMappings[uf].region].colorIndex]);
+            }
+            
 
             return { 
                 totalDeliveries, otifRate, onTimeRate, inFullRate, carrierPerformance, regionPerformance, statePerformance,
                 topDelayReasons, totalDelayed: totalDeliveries - onTimeCount,
                 topDiscrepancyReasons, totalDiscrepancy: totalDeliveries - inFullCount,
-                carrierPerformanceByReason, historicalCarrierOtif, monthlyPerformance, yearForHistory,
+                carrierPerformanceByReason,
                 delayDistributionData, 
                 delaysByRegion,
                 delaysByUF,
@@ -1365,7 +1367,11 @@
                 pendingDelayedByCarrierAndRange,
                 mapData,
                 mapLabelData,
-                monthlyExpeditionsByRegion
+                monthlyPerformance,
+                yearForHistory,
+                historicalCarrierOtif,
+                monthlyExpeditionsByRegion,
+                monthlyExpeditionsTotal
             };
         };
 
