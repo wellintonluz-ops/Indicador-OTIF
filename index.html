@@ -1060,7 +1060,9 @@
         }
 
         const calculateMetrics = (data) => {
+            const useFullDataset = !data;
             const sourceData = data || getFilteredData();
+            const historicalData = useFullDataset ? allData : sourceData;
 
             // --- CÁLCULOS FILTRADOS ---
             const dataForStatusMetrics = sourceData.filter(row => getRowValue(row, 'delayReason') !== 'Desistência de compra');
@@ -1109,9 +1111,12 @@
                 }
             });
 
+
+            // Lógica original para as outras métricas (mantém a base original)
             const processedData = sourceData.map(row => {
                 const isOnTime = getRowValue(row, 'status') !== 'Fora do Prazo';
-                const isInFull = !getRowValue(row, 'divergent') || String(getRowValue(row, 'divergent')).toLowerCase() !== 'sim';
+                const divergentValue = getRowValue(row, 'divergent');
+                const isInFull = !divergentValue || String(divergentValue).trim().toLowerCase() !== 'sim';
                 return { ...row, isOnTime, isInFull };
             });
 
@@ -1251,7 +1256,7 @@
             });
             const delayDistributionData = Object.entries(delayDistribution).map(([label, count]) => ({ label, value: count }));
 
-            // --- CÁLCULOS HISTÓRICOS (NÃO FILTRADOS) ---
+            // --- CÁLCULOS HISTÓRICOS (NÃO FILTRADOS - USANDO 'allData') ---
             const yearForHistory = allData.length > 0 ? Math.max(...allData.map(r => {
                 const d = parseDate(getRowValue(r, 'pedidoDate'));
                 return d && !isNaN(d.getTime()) ? d.getFullYear() : -1;
@@ -1266,7 +1271,8 @@
                 const monthKey = `${yearForHistory}-${String(rowDate.getMonth() + 1).padStart(2, '0')}`;
                 if (!acc[monthKey]) acc[monthKey] = { total: 0, otifCount: 0, onTimeCount: 0, inFullCount: 0 };
                 const isOnTime = getRowValue(curr, 'status') !== 'Fora do Prazo';
-                const isInFull = !getRowValue(curr, 'divergent') || String(getRowValue(curr, 'divergent')).toLowerCase() !== 'sim';
+                const divergentValue = getRowValue(curr, 'divergent');
+                const isInFull = !divergentValue || String(divergentValue).trim().toLowerCase() !== 'sim';
                 acc[monthKey].total++;
                 if(isOnTime) acc[monthKey].onTimeCount++;
                 if(isInFull) acc[monthKey].inFullCount++;
@@ -1288,7 +1294,8 @@
 
             const allDataProcessed = allData.map(row => {
                 const isOnTime = getRowValue(row, 'status') !== 'Fora do Prazo';
-                const isInFull = !getRowValue(row, 'divergent') || String(getRowValue(row, 'divergent')).toLowerCase() !== 'sim';
+                const divergentValue = getRowValue(row, 'divergent');
+                const isInFull = !divergentValue || String(divergentValue).trim().toLowerCase() !== 'sim';
                 return { ...row, isOnTime, isInFull };
             });
 
