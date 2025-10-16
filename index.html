@@ -419,9 +419,9 @@
                     ${renderSingleMetricChart(metrics.monthlyPerformance, 'Performance Mensal - In Full', 'inFullRate', metrics.yearForHistory, INFULL_TARGET)}
                 </div>
                 <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-                    ${renderStatCard('OTIF Geral', `${metrics.otifRate.toFixed(2)}%`, 'bg-blue-100 text-blue-600', '<svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>')}
-                    ${renderStatCard('On-Time (No Prazo)', `${metrics.onTimeRate.toFixed(2)}%`, 'bg-green-100 text-green-600', '<svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>')}
-                    ${renderStatCard('In-Full (Sem Divergência)', `${metrics.inFullRate.toFixed(2)}%`, 'bg-indigo-100 text-indigo-600', '<svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" /></svg>')}
+                    ${renderStatCard('OTIF Geral', `${metrics.otifRate.toFixed(1)}%`, 'bg-blue-100 text-blue-600', '<svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>')}
+                    ${renderStatCard('On-Time (No Prazo)', `${metrics.onTimeRate.toFixed(1)}%`, 'bg-green-100 text-green-600', '<svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>')}
+                    ${renderStatCard('In-Full (Sem Divergência)', `${metrics.inFullRate.toFixed(1)}%`, 'bg-indigo-100 text-indigo-600', '<svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" /></svg>')}
                     ${renderStatCard('Total de Linhas', metrics.totalDeliveries.toLocaleString('pt-BR'), 'bg-gray-200 text-gray-700', '<svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2H5a2 2 0 00-2 2v2m14 0h-2" /></svg>')}
                 </div>
                 <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -429,7 +429,7 @@
                     ${renderBarChart('region-performance', metrics.regionPerformance, 'Performance OTIF por Região', true)}
                 </div>
                  <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                    ${renderReasonTable('delay-reasons', metrics.topDelayReasons, 'Principais Motivos de Atraso', metrics.totalDelayed, 'delay')}
+                    ${renderReasonTable('delay-reasons', metrics.topDelayReasons, 'Principais Motivos de Atraso', metrics.totalForDelayReasons, 'delay')}
                     ${renderReasonTable('discrepancy-reasons', metrics.topDiscrepancyReasons, 'Principais Motivos de Divergência', metrics.totalDiscrepancy, 'discrepancy')}
                 </div>
                  <div class="grid grid-cols-1 gap-6">
@@ -654,7 +654,7 @@
                                 <div class="w-3/5 bg-gray-200 rounded-full h-6 relative">
                                      <div class="absolute top-0 bottom-0 border-l-2 border-dashed border-red-500 z-10" style="left: ${OTIF_TARGET}%;"></div>
                                     <div class="${getOtifColorClass(item.value)} h-6 rounded-full ${getOtifTextColorClass(item.value)} text-xs flex items-center justify-end pr-2 group-hover:opacity-80 transition-opacity" style="width: ${item.value}%;">
-                                        ${item.value.toFixed(2)}%
+                                        ${item.value.toFixed(1)}%
                                     </div>
                                 </div>
                             </div>
@@ -715,7 +715,7 @@
                                     <tr data-reason="${item.reason}" data-type="${type}" class="reason-row cursor-pointer hover:bg-gray-50">
                                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-800">${item.reason}</td>
                                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${item.count.toLocaleString('pt-BR')}</td>
-                                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${total > 0 ? ((item.count / total) * 100).toFixed(2) : '0.00'}%</td>
+                                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${total > 0 ? ((item.count / total) * 100).toFixed(1) : '0.0'}%</td>
                                     </tr>
                                 `).join('')}
                             </tbody>
@@ -761,9 +761,9 @@
             return `
             ${renderDashboardHeader(metrics)}
             <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-                ${renderStatCard('OTIF na Região', `${metrics.otifRate.toFixed(2)}%`, 'bg-blue-100 text-blue-600', '<svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>')}
-                ${renderStatCard('On-Time', `${metrics.onTimeRate.toFixed(2)}%`, 'bg-green-100 text-green-600', '<svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>')}
-                ${renderStatCard('In-Full', `${metrics.inFullRate.toFixed(2)}%`, 'bg-indigo-100 text-indigo-600', '<svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" /></svg>')}
+                ${renderStatCard('OTIF na Região', `${metrics.otifRate.toFixed(1)}%`, 'bg-blue-100 text-blue-600', '<svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>')}
+                ${renderStatCard('On-Time', `${metrics.onTimeRate.toFixed(1)}%`, 'bg-green-100 text-green-600', '<svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>')}
+                ${renderStatCard('In-Full', `${metrics.inFullRate.toFixed(1)}%`, 'bg-indigo-100 text-indigo-600', '<svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" /></svg>')}
                 ${renderStatCard('Total de Linhas', metrics.totalDeliveries.toLocaleString('pt-BR'), 'bg-gray-200 text-gray-700', '<svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2H5a2 2 0 00-2 2v2m14 0h-2" /></svg>')}
             </div>
             <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -771,7 +771,7 @@
                 ${renderBarChart('carrier-performance-region', metrics.carrierPerformance, `Top Transportadoras em ${region}`, true)}
             </div>
             <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                ${renderReasonTable('delay-reasons-region', metrics.topDelayReasons, `Principais Motivos de Atraso em ${region}`, metrics.totalDelayed, 'delay')}
+                ${renderReasonTable('delay-reasons-region', metrics.topDelayReasons, `Principais Motivos de Atraso em ${region}`, metrics.totalForDelayReasons, 'delay')}
                 ${renderReasonTable('discrepancy-reasons-region', metrics.topDiscrepancyReasons, `Principais Motivos de Divergência em ${region}`, metrics.totalDiscrepancy, 'discrepancy')}
             </div>
             `;
@@ -788,7 +788,7 @@
             return `
             ${renderDashboardHeader(metrics)}
             <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-                ${renderStatCard('OTIF no Estado', `${metrics.otifRate.toFixed(2)}%`, 'bg-blue-100 text-blue-600', '<svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>')}
+                ${renderStatCard('OTIF no Estado', `${metrics.otifRate.toFixed(1)}%`, 'bg-blue-100 text-blue-600', '<svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>')}
                 ${renderStatCard('Total de Linhas', metrics.totalDeliveries.toLocaleString('pt-BR'), 'bg-gray-200 text-gray-700', '<svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2H5a2 2 0 00-2 2v2m14 0h-2" /></svg>')}
             </div>
             <div class="grid grid-cols-1 gap-6">
@@ -828,7 +828,7 @@
                                 <tr>
                                     <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">${item.label}</td>
                                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${item.count}</td>
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${((item.count / totalOccurrences) * 100).toFixed(2)}%</td>
+                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${((item.count / totalOccurrences) * 100).toFixed(1)}%</td>
                                 </tr>
                             `).join('')}
                         </tbody>
@@ -1061,9 +1061,10 @@
 
         const calculateMetrics = (data) => {
             const sourceData = data || getFilteredData();
+            const otifCalculationsData = sourceData.filter(row => getRowValue(row, 'delayReason') !== 'Desistência de compra');
 
-            // --- CÁLCULOS FILTRADOS ---
-            const dataForStatusMetrics = sourceData.filter(row => getRowValue(row, 'delayReason') !== 'Desistência de compra');
+            // --- CÁLCULOS FILTRADOS (para cards e gráficos principais) ---
+            const dataForStatusMetrics = otifCalculationsData;
             let deliveredTotal = 0, deliveredOnTime = 0, deliveredDelayed = 0;
             let pendingTotal = 0, pendingOnTime = 0, pendingDelayed = 0;
 
@@ -1109,9 +1110,7 @@
                 }
             });
 
-
-            // Lógica original para as outras métricas (mantém a base original)
-            const processedData = sourceData.map(row => {
+            const processedData = otifCalculationsData.map(row => {
                 const isOnTime = getRowValue(row, 'status') !== 'Fora do Prazo';
                 const divergentValue = getRowValue(row, 'divergent');
                 const isInFull = !divergentValue || String(divergentValue).trim().toLowerCase() !== 'sim';
@@ -1152,8 +1151,9 @@
             const regionPerformance = createPerformanceMetric('region');
             const statePerformance = createPerformanceMetric('uf');
             
-            const createReasonMetric = (filterFn, reasonKey) => {
-                const reasons = processedData.filter(filterFn).reduce((acc, curr) => {
+            const createReasonMetric = (filterFn, reasonKey, dataSet) => {
+                const dataToUse = dataSet || processedData;
+                const reasons = dataToUse.filter(filterFn).reduce((acc, curr) => {
                     const reason = getRowValue(curr, reasonKey);
                     if(reason) acc[reason] = (acc[reason] || 0) + 1;
                     return acc;
@@ -1161,8 +1161,21 @@
                 return Object.entries(reasons).map(([reason, count]) => ({ reason, count })).sort((a, b) => b.count - a.count);
             }
 
-            const topDelayReasons = createReasonMetric(row => !row.isOnTime, 'delayReason');
-            const topDiscrepancyReasons = createReasonMetric(row => !row.isInFull, 'discrepancyReason');
+            // Create a processed dataset from the original source data for the delay reasons table
+            const processedSourceData = sourceData.map(row => {
+                const isOnTime = getRowValue(row, 'status') !== 'Fora do Prazo';
+                return { ...row, isOnTime };
+            });
+
+            const topDelayReasons = createReasonMetric(
+                row => !row.isOnTime || getRowValue(row, 'delayReason') === 'Desistência de compra',
+                'delayReason',
+                processedSourceData
+            );
+            const totalForDelayReasons = topDelayReasons.reduce((sum, item) => sum + item.count, 0);
+
+            const topDiscrepancyReasons = createReasonMetric(row => !row.isInFull, 'discrepancyReason', processedData);
+            const totalDiscrepancy = processedData.filter(row => !row.isInFull).length;
 
             const carrierPerformanceByReason = { delay: {}, discrepancy: {} };
             processedData.forEach(row => {
@@ -1186,7 +1199,7 @@
             
             const invoicesByUF = {};
             const uniqueInvoicesByUF = new Set();
-            sourceData.forEach(row => {
+            otifCalculationsData.forEach(row => {
                 const uf = getRowValue(row, 'uf');
                 const invoice = getRowValue(row, 'invoiceNumber');
                 if (uf && invoice && stateMappings[uf]) {
@@ -1260,12 +1273,14 @@
             const delayDistributionData = Object.entries(delayDistribution).map(([label, count]) => ({ label, value: count }));
 
             // --- CÁLCULOS HISTÓRICOS (NÃO FILTRADOS - USANDO 'allData') ---
-            const yearForHistory = allData.length > 0 ? Math.max(...allData.map(r => {
+            const historicalBaseData = allData.filter(row => getRowValue(row, 'delayReason') !== 'Desistência de compra');
+
+            const yearForHistory = historicalBaseData.length > 0 ? Math.max(...historicalBaseData.map(r => {
                 const d = parseDate(getRowValue(r, 'pedidoDate'));
                 return d && !isNaN(d.getTime()) ? d.getFullYear() : -1;
             }).filter(y => y !== -1)) : new Date().getFullYear();
             
-            const monthlyPerformanceData = allData.filter(row => {
+            const monthlyPerformanceData = historicalBaseData.filter(row => {
                 const d = parseDate(getRowValue(row, 'pedidoDate'));
                 return d && !isNaN(d.getTime()) && d.getFullYear() === yearForHistory;
             }).reduce((acc, curr) => {
@@ -1300,7 +1315,7 @@
                 }
             });
 
-            const historicalCarrierOtif = allData.filter(row => {
+            const historicalCarrierOtif = historicalBaseData.filter(row => {
                 const d = parseDate(getRowValue(row, 'pedidoDate'));
                 return d && !isNaN(d.getTime()) && d.getFullYear() === yearForHistory;
             }).reduce((acc, curr) => {
@@ -1375,8 +1390,8 @@
 
             return { 
                 totalDeliveries, otifRate, onTimeRate, inFullRate, carrierPerformance, regionPerformance, statePerformance,
-                topDelayReasons, totalDelayed: totalDeliveries - onTimeCount,
-                topDiscrepancyReasons, totalDiscrepancy: totalDeliveries - inFullCount,
+                topDelayReasons, totalForDelayReasons,
+                topDiscrepancyReasons, totalDiscrepancy,
                 carrierPerformanceByReason,
                 delayDistributionData, 
                 delaysByRegion,
@@ -1796,4 +1811,5 @@
     </script>
 </body>
 </html>
+
 
