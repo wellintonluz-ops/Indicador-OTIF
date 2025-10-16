@@ -414,9 +414,9 @@
                 ${renderDeliveryStatusCards(metrics)}
                 ${renderMapChart(metrics)}
                 <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-6">
-                    ${renderSingleMetricChart(metrics.monthlyPerformance, 'Performance Mensal - OTIF', 'otifRate', metrics.yearForHistory, OTIF_TARGET)}
-                    ${renderSingleMetricChart(metrics.monthlyPerformance, 'Performance Mensal - On Time', 'onTimeRate', metrics.yearForHistory, ONTIME_TARGET)}
-                    ${renderSingleMetricChart(metrics.monthlyPerformance, 'Performance Mensal - In Full', 'inFullRate', metrics.yearForHistory, INFULL_TARGET)}
+                    ${renderSingleMetricChart(metrics.monthlyPerformance, 'Performance Mensal - OTIF', 'otifRate', 'otifCount', metrics.yearForHistory, OTIF_TARGET)}
+                    ${renderSingleMetricChart(metrics.monthlyPerformance, 'Performance Mensal - On Time', 'onTimeRate', 'onTimeCount', metrics.yearForHistory, ONTIME_TARGET)}
+                    ${renderSingleMetricChart(metrics.monthlyPerformance, 'Performance Mensal - In Full', 'inFullRate', 'inFullCount', metrics.yearForHistory, INFULL_TARGET)}
                 </div>
                 <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
                     ${renderStatCard('OTIF Geral', `${metrics.otifRate.toFixed(1)}%`, 'bg-blue-100 text-blue-600', '<svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>')}
@@ -858,7 +858,11 @@
             });
             
             let html = `<div class="bg-white p-6 rounded-lg shadow-md">
-                <h3 class="text-lg font-semibold mb-4 text-gray-700">Histórico Mensal de OTIF para <span class="text-blue-600">${carrierName}</span> (${year})</h3>
+                <h3 class="text-lg font-semibold mb-2 text-gray-700">Histórico Mensal de OTIF para <span class="text-blue-600">${carrierName}</span> (${year})</h3>
+                <p class="text-xs text-gray-500 mb-4 flex items-center">
+                    <span class="border-t-2 border-dashed border-red-500 w-4 inline-block mr-2"></span>
+                    Meta: ${OTIF_TARGET}%
+                </p>
                 <div class="relative flex" style="height: 300px;">
                     <div class="relative w-10 flex-shrink-0 pr-2 text-xs text-right text-gray-500 h-full pb-5 border-r border-gray-200">
                         <span class="absolute right-2" style="bottom: 100%; transform: translateY(50%);">100%</span>
@@ -867,7 +871,12 @@
                         <span class="absolute right-2" style="bottom: 25%; transform: translateY(50%);">25%</span>
                         <span class="absolute right-2 bottom-0">0%</span>
                     </div>
-                    <div class="flex-1 grid grid-cols-12 pl-2 border-b border-gray-200">`;
+                    <div class="flex-1 grid grid-cols-12 pl-2 border-b border-gray-200 relative">`;
+            
+            html += `<div class="absolute top-0 w-full z-10" style="bottom: ${OTIF_TARGET}%;">
+                        <div class="border-t-2 border-dashed border-red-500 h-0"></div>
+                        <span class="absolute -top-2.5 right-0 text-xs text-red-500 font-bold bg-white px-1">${OTIF_TARGET}%</span>
+                     </div>`;
 
             chartData.forEach(item => {
                 html += `<div class="relative flex justify-center items-end h-full px-1">`;
@@ -938,7 +947,7 @@
                     </div>`;
         };
 
-        const renderSingleMetricChart = (monthlyData, title, metricKey, year, target) => {
+        const renderSingleMetricChart = (monthlyData, title, metricKey, countKey, year, target) => {
             const months = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
             const visibleData = monthlyData.filter(m => m.totalCount > 0);
 
@@ -973,7 +982,10 @@
             });
             
             html += `</div></div>`; // End chart area
-            html += `<div class="flex pl-12 pt-2"><div class="grid w-full" style="grid-template-columns: repeat(${visibleData.length}, minmax(0, 1fr));">${visibleData.map(m => `<div class="text-center text-xs text-gray-500"><div>${months[new Date(m.month + '-02').getMonth()]}</div><div class="text-gray-400">(${m.totalCount})</div></div>`).join('')}</div></div>`;
+            html += `<div class="flex pl-12 pt-2"><div class="grid w-full" style="grid-template-columns: repeat(${visibleData.length}, minmax(0, 1fr));">${visibleData.map(m => {
+                const count = m[countKey];
+                return `<div class="text-center text-xs text-gray-500"><div>${months[new Date(m.month + '-02').getMonth()]}</div><div class="text-gray-400">(${count.toLocaleString('pt-BR')})</div></div>`
+            }).join('')}</div></div>`;
             html += `</div>`; // End container
             return html;
         };
@@ -1061,6 +1073,7 @@
 
         const calculateMetrics = (data) => {
             const sourceData = data || getFilteredData();
+            
             const otifCalculationsData = sourceData.filter(row => getRowValue(row, 'delayReason') !== 'Desistência de compra');
 
             // --- CÁLCULOS FILTRADOS (para cards e gráficos principais) ---
@@ -1161,7 +1174,6 @@
                 return Object.entries(reasons).map(([reason, count]) => ({ reason, count })).sort((a, b) => b.count - a.count);
             }
 
-            // Create a processed dataset from the original source data for the delay reasons table
             const processedSourceData = sourceData.map(row => {
                 const isOnTime = getRowValue(row, 'status') !== 'Fora do Prazo';
                 return { ...row, isOnTime };
@@ -1287,13 +1299,14 @@
                 const rowDate = parseDate(getRowValue(curr, 'pedidoDate'));
                 if (isNaN(rowDate.getTime())) return acc;
                 const monthKey = `${yearForHistory}-${String(rowDate.getMonth() + 1).padStart(2, '0')}`;
-                if (!acc[monthKey]) acc[monthKey] = { total: 0, onTimeCount: 0, inFullCount: 0 };
+                if (!acc[monthKey]) acc[monthKey] = { total: 0, onTimeCount: 0, inFullCount: 0, otifCount: 0 };
                 const isOnTime = getRowValue(curr, 'status') !== 'Fora do Prazo';
                 const divergentValue = getRowValue(curr, 'divergent');
                 const isInFull = !divergentValue || String(divergentValue).trim().toLowerCase() !== 'sim';
                 acc[monthKey].total++;
                 if(isOnTime) acc[monthKey].onTimeCount++;
                 if(isInFull) acc[monthKey].inFullCount++;
+                if(isOnTime && isInFull) acc[monthKey].otifCount++;
                 return acc;
             }, {});
 
@@ -1308,10 +1321,16 @@
                         otifRate: (onTimeRate / 100) * inFullRate,
                         onTimeRate: onTimeRate,
                         inFullRate: inFullRate,
-                        totalCount: data.total
+                        totalCount: data.total,
+                        otifCount: data.otifCount,
+                        onTimeCount: data.onTimeCount,
+                        inFullCount: data.inFullCount
                     };
                 } else {
-                    return { month: monthKey, otifRate: undefined, onTimeRate: undefined, inFullRate: undefined, totalCount: 0 };
+                    return { 
+                        month: monthKey, otifRate: undefined, onTimeRate: undefined, inFullRate: undefined, totalCount: 0,
+                        otifCount: 0, onTimeCount: 0, inFullCount: 0
+                    };
                 }
             });
 
