@@ -357,7 +357,7 @@
             let viewHtml = '';
 
             if (isMapDrilldownActive) {
-                viewHtml = renderRegionExpeditionView(selectedRegion);
+                viewHtml = renderRegionHistoryView(selectedRegion);
             } else if (isPendingDelayedDrilldownActive) {
                 viewHtml = renderPendingDelayedDrilldownView();
             } else if (selectedState) {
@@ -448,7 +448,7 @@
             
         const renderDateFilter = () => `
              <div class="bg-white p-4 rounded-lg shadow-md flex flex-wrap items-center gap-4">
-                 <span class="font-semibold text-gray-700">Filtrar por Período:</span>
+                 <span class="font-semibold text-gray-700">Filtrar por Data do Pedido:</span>
                  <div>
                      <label for="start-date" class="text-sm text-gray-600 mr-2">De:</label>
                      <input type="date" name="start" id="start-date" value="${appliedDateRange.start}" class="border-gray-300 rounded-md shadow-sm p-2">
@@ -978,14 +978,14 @@
             return html;
         };
 
-        const renderRegionExpeditionView = (region) => {
+        const renderRegionHistoryView = (region) => {
             const fullMetrics = calculateMetrics(allData); // Always use all data for this view
             const yearForHistory = new Date().getFullYear();
-            const expeditionData = fullMetrics.monthlyExpeditionsByRegion[region] || {};
-            const monthlyTotals = fullMetrics.monthlyExpeditionsTotal;
+            const expeditionData = fullMetrics.monthlyInvoicesByRegion[region] || {};
+            const monthlyTotals = fullMetrics.monthlyInvoicesTotal;
 
             if (Object.keys(expeditionData).length === 0) {
-                return `<div class="bg-white p-6 rounded-lg shadow-md"><h3 class="text-lg font-semibold mb-4 text-gray-700">Histórico de Expedição para ${region}</h3><p class="text-gray-500">Nenhum dado de expedição encontrado para esta região no ano de ${yearForHistory}.</p></div>`;
+                return `<div class="bg-white p-6 rounded-lg shadow-md"><h3 class="text-lg font-semibold mb-4 text-gray-700">Histórico de Pedidos para ${region}</h3><p class="text-gray-500">Nenhum dado de pedido encontrado para esta região no ano de ${yearForHistory}.</p></div>`;
             }
 
             const months = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
@@ -1004,8 +1004,8 @@
 
             return `
                 <div class="bg-white p-6 rounded-lg shadow-md">
-                    <h3 class="text-lg font-semibold mb-4 text-gray-700">Histórico Mensal de Expedição para <span class="text-blue-600">${region}</span> (${yearForHistory})</h3>
-                    <p class="text-xs text-gray-500 mb-4">Os percentuais são calculados com base no total de expedições de cada mês em todas as regiões.</p>
+                    <h3 class="text-lg font-semibold mb-4 text-gray-700">Histórico Mensal de Pedidos para <span class="text-blue-600">${region}</span> (${yearForHistory})</h3>
+                    <p class="text-xs text-gray-500 mb-4">Os percentuais são calculados com base no total de pedidos de cada mês em todas as regiões.</p>
                     <div class="space-y-4">
                         ${chartData.map(item => `
                             <div class="flex items-center group">
@@ -1348,24 +1348,24 @@
                 });
             });
 
-            const monthlyExpeditionsByRegion = {};
-            const monthlyExpeditionsTotal = {};
+            const monthlyInvoicesByRegion = {};
+            const monthlyInvoicesTotal = {};
             const uniqueInvoicesByMonth = new Set();
             const uniqueInvoicesByRegionMonth = new Set();
             allData.forEach(row => {
-                const expeditionDateStr = getRowValue(row, 'expeditionDate');
+                const pedidoDateStr = getRowValue(row, 'pedidoDate');
                 const invoice = getRowValue(row, 'invoiceNumber');
-                if (!expeditionDateStr || !invoice) return;
+                if (!pedidoDateStr || !invoice) return;
 
-                const expeditionDate = parseDate(expeditionDateStr);
-                if (isNaN(expeditionDate.getTime())) return;
+                const pedidoDate = parseDate(pedidoDateStr);
+                if (isNaN(pedidoDate.getTime())) return;
                 
-                const year = expeditionDate.getFullYear();
-                const monthKey = `${year}-${String(expeditionDate.getMonth() + 1).padStart(2, '0')}`;
+                const year = pedidoDate.getFullYear();
+                const monthKey = `${year}-${String(pedidoDate.getMonth() + 1).padStart(2, '0')}`;
                 
                 const totalKey = `${monthKey}-${invoice}`;
                 if (!uniqueInvoicesByMonth.has(totalKey)) {
-                    monthlyExpeditionsTotal[monthKey] = (monthlyExpeditionsTotal[monthKey] || 0) + 1;
+                    monthlyInvoicesTotal[monthKey] = (monthlyInvoicesTotal[monthKey] || 0) + 1;
                     uniqueInvoicesByMonth.add(totalKey);
                 }
 
@@ -1373,10 +1373,10 @@
                 if (region) {
                     const regionKey = `${region}-${monthKey}-${invoice}`;
                     if (!uniqueInvoicesByRegionMonth.has(regionKey)) {
-                        if (!monthlyExpeditionsByRegion[region]) {
-                            monthlyExpeditionsByRegion[region] = {};
+                        if (!monthlyInvoicesByRegion[region]) {
+                            monthlyInvoicesByRegion[region] = {};
                         }
-                        monthlyExpeditionsByRegion[region][monthKey] = (monthlyExpeditionsByRegion[region][monthKey] || 0) + 1;
+                        monthlyInvoicesByRegion[region][monthKey] = (monthlyInvoicesByRegion[region][monthKey] || 0) + 1;
                         uniqueInvoicesByRegionMonth.add(regionKey);
                     }
                 }
@@ -1405,8 +1405,8 @@
                 monthlyPerformance,
                 yearForHistory,
                 historicalCarrierOtif,
-                monthlyExpeditionsByRegion,
-                monthlyExpeditionsTotal
+                monthlyInvoicesByRegion,
+                monthlyInvoicesTotal
             };
         };
 
@@ -1811,5 +1811,4 @@
     </script>
 </body>
 </html>
-
 
