@@ -914,7 +914,7 @@
 
             chartData.forEach(item => {
                 const value = item[metricKey];
-                html += `<div class="relative flex justify-center items-end h-full px-1">`;
+                html += `<div class="relative flex justify-center items-end h-full px-2">`; // Added px-2 for spacing
                 if (value !== undefined) {
                     html += `<div class="absolute text-center w-full text-xs font-bold text-slate-100" style="bottom: calc(${value}% + 4px);">${value.toFixed(1)}%</div>
                             <div class="${colorClassFn(value)} w-full" style="height: ${value}%;"></div>`;
@@ -1118,7 +1118,7 @@
             const otifCalculationsData = sourceData.filter(row => getRowValue(row, 'delayReason') !== 'Desistência de compra');
 
             // --- CÁLCULOS FILTRADOS (para cards e gráficos principais) ---
-            const dataForStatusMetrics = sourceData; // Use sourceData here to include "Desistência de compra" for these cards
+            const dataForStatusMetrics = otifCalculationsData; 
             let deliveredTotal = 0, deliveredOnTime = 0, deliveredDelayed = 0;
             let pendingTotal = 0, pendingOnTime = 0, pendingDelayed = 0;
 
