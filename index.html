@@ -121,6 +121,7 @@
         let loadedFiles = [];
         let currentView = 'dashboard';
         let appliedDateRange = { start: '', end: '' };
+        let selectedCarrierFromFilter = null;
         let selectedRegion = null;
         let selectedState = null;
         let selectedCarrier = null;
@@ -309,8 +310,14 @@
             return 'bg-red-500';
         };
 
+        const getInFullColorClass = (value) => {
+            if (value >= 99) return 'bg-green-500';
+            if (value >= 90) return 'bg-yellow-500';
+            return 'bg-red-500';
+        };
+
         const getOtifTextColorClass = (value) => {
-            if (value > 90 && value < 96) return 'text-black';
+            if (value > 90 && value < 99) return 'text-black';
             return 'text-white';
         };
 
@@ -446,20 +453,30 @@
                 </div>
             </div>`;
             
-        const renderDateFilter = () => `
+        const renderDateFilter = () => {
+             const carriers = [...new Set(allData.map(row => getRowValue(row, 'carrier')).filter(Boolean))].sort();
+            return `
              <div class="bg-slate-800 p-4 rounded-lg border border-slate-700 flex flex-wrap items-center gap-4">
-                 <span class="font-semibold text-slate-200">Filtrar por Data do Pedido:</span>
+                 <span class="font-semibold text-slate-200">Filtrar por:</span>
                  <div>
-                     <label for="start-date" class="text-sm text-slate-300 mr-2">De:</label>
+                     <label for="start-date" class="text-sm text-slate-300 mr-2">Data do Pedido (De):</label>
                      <input type="date" name="start" id="start-date" value="${appliedDateRange.start}" class="bg-slate-700 border-slate-600 rounded-md shadow-sm p-2 text-slate-300">
                  </div>
                  <div>
                     <label for="end-date" class="text-sm text-slate-300 mr-2">Até:</label>
                     <input type="date" name="end" id="end-date" value="${appliedDateRange.end}" class="bg-slate-700 border-slate-600 rounded-md shadow-sm p-2 text-slate-300">
                  </div>
+                 <div>
+                    <label for="carrier-filter" class="text-sm text-slate-300 mr-2">Transportadora:</label>
+                    <select id="carrier-filter" class="bg-slate-700 border-slate-600 rounded-md shadow-sm p-2 text-slate-300">
+                        <option value="">Todas</option>
+                        ${carriers.map(c => `<option value="${c}" ${selectedCarrierFromFilter === c ? 'selected' : ''}>${c}</option>`).join('')}
+                    </select>
+                 </div>
                  <button id="apply-filter-btn" class="bg-blue-500 text-white font-bold py-2 px-4 rounded-md hover:bg-blue-600 transition-colors">Aplicar</button>
                  <button id="clear-filter-btn" class="bg-slate-600 text-slate-200 font-bold py-2 px-4 rounded-md hover:bg-slate-500 transition-colors">Limpar Filtro</button>
              </div>`;
+        }
         
         const renderBreadcrumbs = () => {
             const initialState = { region: null, state: null, carrier: null, reason: null, delayRange: null, delayRegion: null, delayUF: null };
@@ -839,29 +856,46 @@
 
         const renderCarrierDetailView = (carrierName) => {
             const metrics = calculateMetrics(allData);
-            const historicalData = metrics.historicalCarrierOtif;
+            const historicalData = metrics.historicalCarrierPerformance;
             const year = metrics.yearForHistory;
-            
+
             if (!historicalData || !historicalData[carrierName]) {
-                 return `<div class="bg-slate-800 p-6 rounded-lg border border-slate-700"><h3 class="text-lg font-semibold mb-4 text-slate-200">Histórico Mensal para: <span class="text-blue-400">${carrierName}</span></h3><p class="text-slate-400">Nenhum dado histórico encontrado para esta transportadora.</p></div>`;
+                return `<div class="bg-slate-800 p-6 rounded-lg border border-slate-700"><h3 class="text-lg font-semibold mb-4 text-slate-200">Histórico Mensal para: <span class="text-blue-400">${carrierName}</span></h3><p class="text-slate-400">Nenhum dado histórico encontrado para esta transportadora.</p></div>`;
             }
 
             const months = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+            
             const chartData = months.map((monthName, index) => {
                 const monthKey = `${year}-${String(index + 1).padStart(2, '0')}`;
                 const monthData = historicalData[carrierName][monthKey];
                 return {
                     label: monthName,
-                    value: monthData ? monthData.value : undefined,
+                    otifRate: monthData ? monthData.otifRate : undefined,
+                    onTimeRate: monthData ? monthData.onTimeRate : undefined,
+                    inFullRate: monthData ? monthData.inFullRate : undefined,
                     totalCount: monthData ? monthData.totalCount : 0,
                 };
             });
-            
+
+            return `
+                <h2 class="text-2xl font-bold text-slate-50 mb-4">Histórico Mensal para <span class="text-blue-400">${carrierName}</span> (${year})</h2>
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    ${renderCarrierHistoryChart(chartData, 'OTIF', 'otifRate', OTIF_TARGET)}
+                    ${renderCarrierHistoryChart(chartData, 'On Time', 'onTimeRate', ONTIME_TARGET)}
+                    ${renderCarrierHistoryChart(chartData, 'In Full', 'inFullRate', INFULL_TARGET)}
+                </div>
+            `;
+        };
+
+        const renderCarrierHistoryChart = (chartData, title, metricKey, target) => {
+            const months = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+            const colorClassFn = metricKey === 'inFullRate' ? getInFullColorClass : getOtifColorClass;
+
             let html = `<div class="bg-slate-800 p-6 rounded-lg border border-slate-700">
-                <h3 class="text-lg font-semibold mb-2 text-slate-200">Histórico Mensal de OTIF para <span class="text-blue-400">${carrierName}</span> (${year})</h3>
+                <h3 class="text-lg font-semibold mb-2 text-slate-200">${title}</h3>
                 <p class="text-sm font-medium text-slate-300 mb-4 flex items-center">
                     <span class="border-t-2 border-dashed border-red-500 w-4 inline-block mr-2"></span>
-                    Meta: ${OTIF_TARGET}%
+                    Meta: ${target}%
                 </p>
                 <div class="relative flex" style="height: 300px;">
                     <div class="relative w-10 flex-shrink-0 pr-2 text-xs text-right text-slate-400 h-full pb-5 border-r border-slate-700">
@@ -873,16 +907,17 @@
                     </div>
                     <div class="flex-1 grid grid-cols-12 pl-2 border-b border-slate-700 relative">`;
             
-            html += `<div class="absolute top-0 w-full z-10" style="bottom: ${OTIF_TARGET}%;">
+            html += `<div class="absolute top-0 w-full z-10" style="bottom: ${target}%;">
                         <div class="border-t-2 border-dashed border-red-500 h-0"></div>
-                        <span class="absolute -top-2.5 right-0 text-xs text-red-500 font-bold bg-slate-800 px-1">${OTIF_TARGET}%</span>
+                        <span class="absolute -top-2.5 right-0 text-xs text-red-500 font-bold bg-slate-800 px-1">${target}%</span>
                      </div>`;
 
             chartData.forEach(item => {
+                const value = item[metricKey];
                 html += `<div class="relative flex justify-center items-end h-full px-1">`;
-                if (item.value !== undefined) {
-                    html += `<div class="absolute text-center w-full text-xs font-bold text-slate-100" style="bottom: calc(${item.value}% + 4px);">${item.value.toFixed(1)}%</div>
-                            <div class="${getOtifColorClass(item.value)} w-3/4" style="height: ${item.value}%;"></div>`;
+                if (value !== undefined) {
+                    html += `<div class="absolute text-center w-full text-xs font-bold text-slate-100" style="bottom: calc(${value}% + 4px);">${value.toFixed(1)}%</div>
+                            <div class="${colorClassFn(value)} w-3/4" style="height: ${value}%;"></div>`;
                 }
                 html += `</div>`;
             });
@@ -950,6 +985,7 @@
         const renderSingleMetricChart = (monthlyData, title, metricKey, countKey, year, target) => {
             const months = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
             const visibleData = monthlyData.filter(m => m.totalCount > 0);
+            const colorClassFn = metricKey === 'inFullRate' ? getInFullColorClass : getOtifColorClass;
 
             if (!visibleData || visibleData.length === 0) {
                  return `<div class="bg-slate-800 p-6 rounded-lg border border-slate-700"><h3 class="text-lg font-semibold mb-4 text-slate-200">${title} (${year})</h3><p class="text-slate-400">Nenhum dado para exibir.</p></div>`;
@@ -976,7 +1012,7 @@
                 html += `<div class="relative flex justify-center items-end h-full px-1 group">`;
                 if (value !== undefined) {
                     html += `<div class="absolute text-center w-full text-xs font-bold text-slate-100" style="bottom: calc(${value}% + 4px);">${value.toFixed(1)}%</div>
-                            <div class="${getOtifColorClass(value)} w-3/4" style="height: ${value}%;"></div>`;
+                            <div class="${colorClassFn(value)} w-3/4" style="height: ${value}%;"></div>`;
                 }
                 html += `</div>`;
             });
@@ -1066,6 +1102,8 @@
 
                 if (startDate && rowDate < startDate) return false;
                 if (endDate && rowDate > endDate) return false;
+
+                if (selectedCarrierFromFilter && getRowValue(row, 'carrier') !== selectedCarrierFromFilter) return false;
                 
                 return true;
             });
@@ -1285,7 +1323,11 @@
             const delayDistributionData = Object.entries(delayDistribution).map(([label, count]) => ({ label, value: count }));
 
             // --- CÁLCULOS HISTÓRICOS (NÃO FILTRADOS - USANDO 'allData') ---
-            const historicalBaseData = allData.filter(row => getRowValue(row, 'delayReason') !== 'Desistência de compra');
+            let historicalBaseData = allData;
+            if(selectedCarrierFromFilter){
+                historicalBaseData = historicalBaseData.filter(row => getRowValue(row, 'carrier') === selectedCarrierFromFilter);
+            }
+            historicalBaseData = historicalBaseData.filter(row => getRowValue(row, 'delayReason') !== 'Desistência de compra');
 
             const yearForHistory = historicalBaseData.length > 0 ? Math.max(...historicalBaseData.map(r => {
                 const d = parseDate(getRowValue(r, 'pedidoDate'));
@@ -1334,7 +1376,7 @@
                 }
             });
 
-            const historicalCarrierOtif = historicalBaseData.filter(row => {
+            const historicalCarrierPerformance = historicalBaseData.filter(row => {
                 const d = parseDate(getRowValue(row, 'pedidoDate'));
                 return d && !isNaN(d.getTime()) && d.getFullYear() === yearForHistory;
             }).reduce((acc, curr) => {
@@ -1355,13 +1397,16 @@
                 
                 return acc;
             }, {});
-            Object.keys(historicalCarrierOtif).forEach(carrier => {
-                Object.keys(historicalCarrierOtif[carrier]).forEach(month => {
-                    const { total, onTimeCount, inFullCount } = historicalCarrierOtif[carrier][month];
+
+            Object.keys(historicalCarrierPerformance).forEach(carrier => {
+                Object.keys(historicalCarrierPerformance[carrier]).forEach(month => {
+                    const { total, onTimeCount, inFullCount } = historicalCarrierPerformance[carrier][month];
                     const onTimeRate = (onTimeCount / total) * 100;
                     const inFullRate = (inFullCount / total) * 100;
-                    historicalCarrierOtif[carrier][month] = { 
-                        value: (onTimeRate / 100) * inFullRate,
+                    historicalCarrierPerformance[carrier][month] = { 
+                        otifRate: (onTimeRate / 100) * inFullRate,
+                        onTimeRate: onTimeRate,
+                        inFullRate: inFullRate,
                         totalCount: total 
                     };
                 });
@@ -1423,7 +1468,7 @@
                 mapLabelData,
                 monthlyPerformance,
                 yearForHistory,
-                historicalCarrierOtif,
+                historicalCarrierPerformance,
                 monthlyInvoicesByRegion,
                 monthlyInvoicesTotal
             };
@@ -1696,6 +1741,7 @@
             if(e.target.id === 'apply-filter-btn') {
                 const startDate = document.getElementById('start-date').value;
                 const endDate = document.getElementById('end-date').value;
+                const carrier = document.getElementById('carrier-filter').value;
 
                 if (startDate && endDate && startDate > endDate) {
                     const messagesContainer = document.getElementById('dashboard-messages');
@@ -1707,10 +1753,12 @@
 
                 appliedDateRange.start = startDate;
                 appliedDateRange.end = endDate;
+                selectedCarrierFromFilter = carrier || null;
                 navigateToState({ region: null, state: null, carrier: null, reason: null, delayRange: null, delayRegion: null, delayUF: null });
             }
             if(e.target.id === 'clear-filter-btn') {
                  appliedDateRange = { start: '', end: '' };
+                 selectedCarrierFromFilter = null;
                  navigateToState({ region: null, state: null, carrier: null, reason: null, delayRange: null, delayRegion: null, delayUF: null });
             }
             const breadcrumbLink = e.target.closest('.breadcrumb-link');
