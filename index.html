@@ -107,10 +107,11 @@
 
     <script type="module">
         // --- CONFIGURAÇÃO ---
-        const DB_NAME = 'otif-dashboard-db';
-        const DB_VERSION = 1;
-        const FILE_STORE = 'files';
-        const DATA_STORE = 'data';
+        // Database constants (not used in presentation mode)
+        // const DB_NAME = 'otif-dashboard-db';
+        // const DB_VERSION = 1;
+        // const FILE_STORE = 'files';
+        // const DATA_STORE = 'data';
 
         const OTIF_TARGET = 96;
         const ONTIME_TARGET = 96;
@@ -131,8 +132,8 @@
         let selectedDelayUF = null;
         let isPendingDelayedDrilldownActive = false;
         let isMapDrilldownActive = false;
-        let isDbAvailable = true;
-        let dbPromise;
+        // let isDbAvailable = true;
+        // let dbPromise;
 
         // --- MAPEAMENTO DE COLUNAS (para robustez) ---
         const KEY_MAPPINGS = {
@@ -214,6 +215,8 @@
         google.charts.load('current', { 'packages':['geochart'] });
 
         // --- BASE DE DADOS INDEXEDDB ---
+        // Database initialization (not used in presentation mode)
+        /*
         const initDb = () => {
              try {
                  dbPromise = new Promise((resolve, reject) => {
@@ -240,6 +243,7 @@
                  return Promise.reject(e);
              }
         };
+        */
         
         // --- FUNÇÕES DE CONTROLO ---
         const showLoading = (message = 'A processar...') => {
@@ -1080,16 +1084,59 @@
         const parseDate = (rowDateStr) => {
             if (typeof rowDateStr === 'number') { // Formato Excel
                 const excelEpoch = new Date(1899, 11, 30);
-                return new Date(excelEpoch.getTime() + rowDateStr * 86400000);
+                const result = new Date(excelEpoch.getTime() + rowDateStr * 86400000);
+                return result;
             }
-            if (String(rowDateStr).includes('/')) { // Formato DD/MM/YYYY
-                const parts = rowDateStr.split('/');
+            
+            if (String(rowDateStr).includes('/')) { 
+                const parts = String(rowDateStr).split('/');
                 if (parts.length === 3) {
-                    return new Date(`${parts[2]}-${parts[1]}-${parts[0]}T00:00:00`);
+                    let day, month, year;
+                    
+                    // Detect format based on values
+                    // If first part > 12, it's likely DD/MM/YY or DD/MM/YYYY
+                    // If third part is 2 digits, it's a short year
+                    
+                    if (parts[2].length === 2) {
+                        // Short year format - could be M/D/YY or D/M/YY
+                        // Assume M/D/YY (American format common in Excel)
+                        month = parts[0].padStart(2, '0');
+                        day = parts[1].padStart(2, '0');
+                        year = parts[2].length === 2 ? '20' + parts[2] : parts[2];
+                    } else if (parts[0].length <= 2 && parts[1].length <= 2 && parts[2].length === 4) {
+                        // Could be DD/MM/YYYY or MM/DD/YYYY
+                        // Check if first number > 12 to determine
+                        if (parseInt(parts[0]) > 12) {
+                            // Must be DD/MM/YYYY
+                            day = parts[0].padStart(2, '0');
+                            month = parts[1].padStart(2, '0');
+                            year = parts[2];
+                        } else if (parseInt(parts[1]) > 12) {
+                            // Must be MM/DD/YYYY
+                            month = parts[0].padStart(2, '0');
+                            day = parts[1].padStart(2, '0');
+                            year = parts[2];
+                        } else {
+                            // Ambiguous - assume MM/DD/YYYY (American format)
+                            month = parts[0].padStart(2, '0');
+                            day = parts[1].padStart(2, '0');
+                            year = parts[2];
+                        }
+                    } else {
+                        // Default to DD/MM/YYYY
+                        day = parts[0].padStart(2, '0');
+                        month = parts[1].padStart(2, '0');
+                        year = parts[2].length === 2 ? '20' + parts[2] : parts[2];
+                    }
+                    
+                    const result = new Date(`${year}-${month}-${day}T00:00:00`);
+                    return result;
                 }
             }
+            
             // Formato YYYY-MM-DD ou outro que o construtor Date entenda
-            return new Date(rowDateStr + 'T00:00:00');
+            const result = new Date(rowDateStr + 'T00:00:00');
+            return result;
         };
         
         const getFilteredData = () => {
@@ -1113,9 +1160,45 @@
         }
 
         const calculateMetrics = (data) => {
-            const sourceData = data || getFilteredData();
-            
-            const otifCalculationsData = sourceData.filter(row => getRowValue(row, 'delayReason') !== 'Desistência de compra');
+            try {
+                const sourceData = data || getFilteredData();
+                
+                if (!sourceData || sourceData.length === 0) {
+                    return {
+                        totalDeliveries: 0,
+                        otifRate: 0,
+                        onTimeRate: 0,
+                        inFullRate: 0,
+                        carrierPerformance: [],
+                        regionPerformance: [],
+                        statePerformance: [],
+                        topDelayReasons: [],
+                        totalForDelayReasons: 0,
+                        topDiscrepancyReasons: [],
+                        totalDiscrepancy: 0,
+                        carrierPerformanceByReason: { delay: {}, discrepancy: {} },
+                        delayDistributionData: [],
+                        delaysByRegion: {},
+                        delaysByUF: {},
+                        delaysByCarrierInUF: {},
+                        deliveredTotal: 0,
+                        deliveredOnTime: 0,
+                        deliveredDelayed: 0,
+                        pendingTotal: 0,
+                        pendingOnTime: 0,
+                        pendingDelayed: 0,
+                        pendingDelayedByCarrierAndRange: {},
+                        mapData: [['State', 'Region']],
+                        mapLabelData: [],
+                        monthlyPerformance: [],
+                        yearForHistory: new Date().getFullYear(),
+                        historicalCarrierPerformance: {},
+                        monthlyInvoicesByRegion: {},
+                        monthlyInvoicesTotal: {}
+                    };
+                }
+                
+                const otifCalculationsData = sourceData.filter(row => getRowValue(row, 'delayReason') !== 'Desistência de compra');
 
             // --- CÁLCULOS FILTRADOS (para cards e gráficos principais) ---
             const dataForStatusMetrics = otifCalculationsData; 
@@ -1332,10 +1415,15 @@
             }
             historicalBaseData = historicalBaseData.filter(row => getRowValue(row, 'delayReason') !== 'Desistência de compra');
 
-            const yearForHistory = historicalBaseData.length > 0 ? Math.max(...historicalBaseData.map(r => {
-                const d = parseDate(getRowValue(r, 'pedidoDate'));
-                return d && !isNaN(d.getTime()) ? d.getFullYear() : -1;
-            }).filter(y => y !== -1)) : new Date().getFullYear();
+            // Find max year efficiently without spread operator
+            let yearForHistory = new Date().getFullYear();
+            for (const row of historicalBaseData) {
+                const d = parseDate(getRowValue(row, 'pedidoDate'));
+                if (d && !isNaN(d.getTime())) {
+                    const year = d.getFullYear();
+                    if (year > yearForHistory) yearForHistory = year;
+                }
+            }
             
             const monthlyPerformanceData = historicalBaseData.filter(row => {
                 const d = parseDate(getRowValue(row, 'pedidoDate'));
@@ -1475,11 +1563,48 @@
                 monthlyInvoicesByRegion,
                 monthlyInvoicesTotal
             };
+            
+            } catch (error) {
+                console.error('Error calculating metrics:', error);
+                // Return empty metrics on error
+                return {
+                    totalDeliveries: 0,
+                    otifRate: 0,
+                    onTimeRate: 0,
+                    inFullRate: 0,
+                    carrierPerformance: [],
+                    regionPerformance: [],
+                    statePerformance: [],
+                    topDelayReasons: [],
+                    totalForDelayReasons: 0,
+                    topDiscrepancyReasons: [],
+                    totalDiscrepancy: 0,
+                    carrierPerformanceByReason: { delay: {}, discrepancy: {} },
+                    delayDistributionData: [],
+                    delaysByRegion: {},
+                    delaysByUF: {},
+                    delaysByCarrierInUF: {},
+                    deliveredTotal: 0,
+                    deliveredOnTime: 0,
+                    deliveredDelayed: 0,
+                    pendingTotal: 0,
+                    pendingOnTime: 0,
+                    pendingDelayed: 0,
+                    pendingDelayedByCarrierAndRange: {},
+                    mapData: [['State', 'Region']],
+                    mapLabelData: [],
+                    monthlyPerformance: [],
+                    yearForHistory: new Date().getFullYear(),
+                    historicalCarrierPerformance: {},
+                    monthlyInvoicesByRegion: {},
+                    monthlyInvoicesTotal: {}
+                };
+            }
         };
 
         const drawMapChart = (mapData) => {
-            if (!google.visualization || !google.visualization.GeoChart) {
-                google.charts.setOnLoadCallback(() => drawMapChart(mapData));
+            if (!google || !google.visualization || !google.visualization.GeoChart) {
+                console.warn('Google Charts not loaded yet, skipping map chart');
                 return;
             }
 
@@ -1523,12 +1648,22 @@
             }
         }
 
+        let isProcessingFile = false;
+        
         const processFile = async (file) => {
              if (!file) return;
+             
+             if (isProcessingFile) {
+                 console.warn('Arquivo já está sendo processado, ignorando chamada duplicada');
+                 return;
+             }
+             
+             isProcessingFile = true;
             
             importError.textContent = '';
             if (loadedFiles.some(f => f.name === file.name)) {
                 importError.textContent = `O ficheiro "${file.name}" já foi importado.`;
+                isProcessingFile = false;
                 return;
             }
 
@@ -1552,15 +1687,33 @@
                      } else if (fileExtension === 'xlsx' || fileExtension === 'xls') {
                          if (typeof XLSX === 'undefined') {
                              importError.textContent = 'A biblioteca de leitura de planilhas (XLSX) não pôde ser carregada.';
+                             isProcessingFile = false;
                              return;
                          }
+                         
+                         showLoading('A processar ficheiro Excel... Isso pode demorar alguns momentos.');
+                         
+                         // Use dense mode to handle large files better
                          const data = new Uint8Array(e.target.result);
-                         const workbook = XLSX.read(data, { type: 'array' });
+                         const workbook = XLSX.read(data, { 
+                             type: 'array',
+                             cellDates: true,
+                             cellNF: false,
+                             cellText: false,
+                             dense: true  // Use dense mode for better performance with large files
+                         });
                          const sheetName = workbook.SheetNames[0];
                          const worksheet = workbook.Sheets[sheetName];
-                         rawData = XLSX.utils.sheet_to_json(worksheet);
+                         
+                         showLoading('A converter dados... Aguarde.');
+                         
+                         rawData = XLSX.utils.sheet_to_json(worksheet, {
+                             raw: false,
+                             defval: ''
+                         });
                      } else {
                          importError.textContent = 'Formato de ficheiro não suportado. Use .csv ou .xlsx';
+                         isProcessingFile = false;
                          return;
                      }
                     
@@ -1573,30 +1726,21 @@
                         }
                     }
 
-                    showLoading(`A guardar ${rawData.length.toLocaleString('pt-BR')} linhas...`);
+                    showLoading(`A processar ${rawData.length.toLocaleString('pt-BR')} linhas...`);
 
-                    if (isDbAvailable) {
-                        const db = await dbPromise;
-                        const dataTx = db.transaction(DATA_STORE, 'readwrite');
-                        const dataStore = dataTx.objectStore(DATA_STORE);
-                        rawData.forEach(row => dataStore.add({ ...row, fileName: file.name }));
-                        await new Promise((resolve, reject) => {
-                            dataTx.oncomplete = resolve;
-                            dataTx.onerror = reject;
-                        });
-
-                        const fileTx = db.transaction(FILE_STORE, 'readwrite');
-                        const fileStore = fileTx.objectStore(FILE_STORE);
-                        fileStore.add({ name: file.name, uploadDate: new Date().toISOString() });
-                        await new Promise((resolve, reject) => {
-                            fileTx.oncomplete = resolve;
-                            fileTx.onerror = reject;
-                        });
-                    }
+                    // Simple processing - just add to memory, no database
+                    allData = []; // Clear existing data
+                    loadedFiles = []; // Clear existing files
                     
-                    allData.push(...rawData.map(r => ({...r, fileName: file.name})));
+                    // Add data directly with filename
+                    rawData.forEach(row => {
+                        allData.push({ ...row, fileName: file.name });
+                    });
+                    
                     loadedFiles.push({ name: file.name, uploadDate: new Date().toISOString() });
 
+                    showLoading('A renderizar dashboard...');
+                    
                     renderLoadedFiles();
                     switchView('dashboard');
                     renderDashboard();
@@ -1605,7 +1749,14 @@
                      console.error(err);
                 } finally {
                     hideLoading();
+                    isProcessingFile = false;
                 }
+            };
+            
+            reader.onerror = () => {
+                importError.textContent = 'Erro ao ler o ficheiro.';
+                hideLoading();
+                isProcessingFile = false;
             };
             
             if (fileExtension === 'csv') {
@@ -1614,38 +1765,18 @@
                 reader.readAsArrayBuffer(file);
             } else {
                 importError.textContent = 'Formato de ficheiro não suportado. Use .csv ou .xlsx';
+                isProcessingFile = false;
             }
         };
         
         const removeFile = async (fileNameToRemove) => {
             showModal(
                 `Remover "${fileNameToRemove}"?`,
-                'Os dados deste ficheiro serão removidos permanentemente. Esta ação é irreversível.',
+                'Os dados deste ficheiro serão removidos. Esta ação é irreversível.',
                 async () => {
                     try {
-                        if (isDbAvailable) {
-                            showLoading(`A remover o ficheiro ${fileNameToRemove}...`);
-                            const db = await dbPromise;
-                            
-                            const dataTx = db.transaction(DATA_STORE, 'readwrite');
-                            const dataStore = dataTx.objectStore(DATA_STORE);
-                            const dataIndex = dataStore.index('fileName');
-                            const request = dataIndex.openCursor(IDBKeyRange.only(fileNameToRemove));
-                            
-                            request.onsuccess = event => {
-                                const cursor = event.target.result;
-                                if(cursor){
-                                    cursor.delete();
-                                    cursor.continue();
-                                }
-                            };
-                            await new Promise(resolve => dataTx.oncomplete = resolve);
-
-                            const fileTx = db.transaction(FILE_STORE, 'readwrite');
-                            fileTx.objectStore(FILE_STORE).delete(fileNameToRemove);
-                            await new Promise(resolve => fileTx.oncomplete = resolve);
-                        }
-
+                        showLoading(`A remover o ficheiro ${fileNameToRemove}...`);
+                        
                         allData = allData.filter(row => row.fileName !== fileNameToRemove);
                         loadedFiles = loadedFiles.filter(file => file.name !== fileNameToRemove);
 
@@ -1664,22 +1795,11 @@
         const clearAllData = async () => {
             showModal(
                 'Limpar todo o histórico?',
-                'Esta ação removerá todos os ficheiros e dados importados. Esta ação é irreversível.',
+                'Esta ação removerá todos os ficheiros e dados importados.',
                 async () => {
                      try {
-                         if (isDbAvailable) {
-                             showLoading('A limpar todo o histórico...');
-                             const db = await dbPromise;
-                             
-                             const dataTx = db.transaction(DATA_STORE, 'readwrite');
-                             dataTx.objectStore(DATA_STORE).clear();
-                             await new Promise(resolve => dataTx.oncomplete = resolve);
-                             
-                             const fileTx = db.transaction(FILE_STORE, 'readwrite');
-                             fileTx.objectStore(FILE_STORE).clear();
-                             await new Promise(resolve => fileTx.oncomplete = resolve);
-                         }
-
+                         showLoading('A limpar todo o histórico...');
+                         
                          allData = [];
                          loadedFiles = [];
                          
@@ -1698,7 +1818,12 @@
         // --- EVENT LISTENERS ---
         navDashboard.addEventListener('click', () => switchView('dashboard'));
         navImport.addEventListener('click', () => switchView('import'));
-        fileUpload.addEventListener('change', (e) => processFile(e.target.files[0]));
+        fileUpload.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            processFile(file);
+            // Reset the input to allow re-uploading the same file if needed
+            e.target.value = '';
+        });
         modalCancelBtn.addEventListener('click', hideModal);
         modalConfirmBtn.addEventListener('click', () => {
             if (typeof confirmAction === 'function') {
@@ -1824,56 +1949,11 @@
 
         // --- INICIALIZAÇÃO ---
         const initializeApp = async () => {
-            showLoading('A carregar dados...');
-            try {
-                dbPromise = initDb();
-                const db = await dbPromise;
-                const fileTx = db.transaction(FILE_STORE, 'readonly');
-                const dataTx = db.transaction(DATA_STORE, 'readonly');
-
-                const filesReq = fileTx.objectStore(FILE_STORE).getAll();
-                const dataReq = dataTx.objectStore(DATA_STORE).getAll();
-                
-                await new Promise(resolve => {
-                    let filesDone = false, dataDone = false;
-                    const checkDone = () => {
-                        if (filesDone && dataDone) resolve();
-                    }
-
-                    filesReq.onsuccess = () => {
-                        loadedFiles = filesReq.result;
-                        filesDone = true;
-                        checkDone();
-                    };
-                    
-                    dataReq.onsuccess = () => {
-                        allData = dataReq.result;
-                        dataDone = true;
-                        checkDone();
-                    };
-                });
-                
-                renderLoadedFiles();
-                renderDashboard();
-
-            } catch (err) {
-                isDbAvailable = false;
-                console.error("IndexedDB não está disponível. Os dados não serão guardados.", err);
-                const errorBanner = document.createElement('div');
-                errorBanner.id = 'error-banner';
-                errorBanner.className = 'bg-yellow-100 border-l-4 border-yellow-500 text-yellow-700 p-4 sticky top-0 z-20';
-                errorBanner.setAttribute('role', 'alert');
-                errorBanner.innerHTML = `<p class="font-bold">Aviso de Armazenamento</p><p>Não foi possível aceder ao armazenamento local. Os dados carregados serão perdidos ao fechar a página. Isto pode acontecer se estiver em modo de navegação anónima.</p>`;
-                document.body.insertBefore(errorBanner, document.body.firstChild);
-                historySection.style.display = 'none';
-                
-                allData = [];
-                loadedFiles = [];
-                renderLoadedFiles();
-                renderDashboard();
-            } finally {
-                hideLoading();
-            }
+            // Simple initialization - no database, just start with empty data
+            allData = [];
+            loadedFiles = [];
+            renderLoadedFiles();
+            renderDashboard();
         };
 
         initializeApp();
